@@ -6,3 +6,4 @@ Repository for ECE 4318 files
 
 -aaron first commit update
 
+-jared's first commit update
