@@ -51,7 +51,8 @@ sequenceDiagram
         end
     end
     note right of Main: No output required for ucinewgame
-     %% --- Move computation ---
+
+    %% --- Move computation ---
     Main->>UCI: readLine()
     UCI-->>Main: cmd="go movetime T"
     Main->>Gen: generateMoves(Pos)
