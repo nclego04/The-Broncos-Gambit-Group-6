@@ -51,3 +51,8 @@ sequenceDiagram
         end
     end
     note right of Main: No output required for ucinewgame
+
+    %% --- Termination ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="quit"
+    Main->>UCI: shutdown()
