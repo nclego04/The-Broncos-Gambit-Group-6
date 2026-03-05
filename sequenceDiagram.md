@@ -24,3 +24,11 @@ sequenceDiagram
     Main->>UCI: readLine()
     UCI-->>Main: cmd="isready"
     Main-->>UCI: send("readyok")
+
+    %% --- New game reset ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="ucinewgame"
+    Main->>Pos: resetGameState()
+    Main->>Gen: clearCaches()
+    Main->>Rules: resetState()
+    note right of Main: No output required for ucinewgame
