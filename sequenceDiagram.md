@@ -50,3 +50,4 @@ sequenceDiagram
             end
         end
     end
+    note right of Main: No output required for ucinewgame
