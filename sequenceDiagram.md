@@ -32,3 +32,22 @@ sequenceDiagram
     Main->>Gen: clearCaches()
     Main->>Rules: resetState()
     note right of Main: No output required for ucinewgame
+
+    %% --- Position setup: startpos and optional move list ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="position startpos [moves ...]"
+    UCI->>Pos: loadStartPos()
+
+    opt moves provided
+        loop for each UCI move token (e.g., e2e4)
+            UCI->>M: parse(token) -> Move
+            UCI->>Rules: validate(Pos, M)
+            Rules-->>UCI: legal/illegal
+            alt legal
+                UCI->>Pos: applyMove(M)
+            else illegal
+                Main-->>UCI: send("info string illegal move")
+            end
+        end
+    end
+    note right of Main: No output required for ucinewgame
