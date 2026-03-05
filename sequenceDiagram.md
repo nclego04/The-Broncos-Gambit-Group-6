@@ -12,3 +12,15 @@ sequenceDiagram
     participant Gen as Move generator
     participant Rules as Rule checker
     participant M as Move
+
+    %% --- Handshake: Arena -> Engine ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="uci"
+    Main-->>UCI: send("id name MyEngine")
+    Main-->>UCI: send("id author TeamX")
+    Main-->>UCI: send("uciok")
+
+    %% --- Readiness check ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="isready"
+    Main-->>UCI: send("readyok")
