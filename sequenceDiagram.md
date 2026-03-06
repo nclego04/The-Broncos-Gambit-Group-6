@@ -51,7 +51,7 @@ sequenceDiagram
         end
     end
     note right of Main: No output required for ucinewgame
-
+    
     %% --- Move computation ---
     Main->>UCI: readLine()
     UCI-->>Main: cmd="go movetime T"
@@ -69,3 +69,8 @@ sequenceDiagram
     else no legal moves
         Main-->>UCI: send("bestmove 0000")
     end
+    
+        %% --- Termination ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="quit"
+    Main->>UCI: shutdown()
