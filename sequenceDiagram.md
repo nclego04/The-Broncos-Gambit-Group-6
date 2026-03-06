@@ -51,8 +51,26 @@ sequenceDiagram
         end
     end
     note right of Main: No output required for ucinewgame
+    
+    %% --- Move computation ---
+    Main->>UCI: readLine()
+    UCI-->>Main: cmd="go movetime T"
+    Main->>Gen: generateMoves(Pos)
+    Gen-->>Main: candidates(List<Move>)
 
-    %% --- Termination ---
+    loop filter legal moves
+        Main->>Rules: validate(Pos, candidate)
+        Rules-->>Main: legal/illegal
+    end
+
+    alt at least one legal move
+        Main->>M: selectBest(candidates)
+        Main-->>UCI: send("bestmove " + M.toUci())
+    else no legal moves
+        Main-->>UCI: send("bestmove 0000")
+    end
+    
+        %% --- Termination ---
     Main->>UCI: readLine()
     UCI-->>Main: cmd="quit"
     Main->>UCI: shutdown()
