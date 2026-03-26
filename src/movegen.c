@@ -140,3 +140,27 @@ static void gen_slider(const Pos *p, int from, int white, const int dirs[][2], i
 void gen_queen(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
     gen_slider(p, from, white, dirs, dcount, moves, n);
 }
+
+/**
+ * Generates all pseudo-legal rook moves (sliding orthogonally).
+ */
+void gen_rook(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
+    int r = from / 8, f = from % 8;
+    for (int i = 0; i < dcount; i++) {
+        int nr = r + dirs[i][0], nf = f + dirs[i][1];
+        while (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
+            int to = nr * 8 + nf;
+            char target = p->b[to];
+            if (target == '.') {
+                add_move(moves, n, from, to, 0);
+            } else {
+                if (is_white_piece(target) != white) {
+                    add_move(moves, n, from, to, 0);
+                }
+                break;
+            }
+            nr += dirs[i][0];
+            nf += dirs[i][1];
+        }
+    }
+}
