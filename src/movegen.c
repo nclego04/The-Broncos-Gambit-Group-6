@@ -53,3 +53,57 @@ void gen_king(const Pos *p, int from, int white, Move *moves, int *n) {
         }
     }
 }
+
+/**
+ * Generates all pseudo-legal pawn moves for a given position and square.
+ * Handles single pushes, double pushes from the start rank, captures, and promotions.
+ */
+void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
+    int r = from / 8, f = from % 8;
+    int dir = white ? 1 : -1;    // Pawns move up (+1 rank) for white, down (-1 rank) for black
+    int start_r = white ? 1 : 6; // Rank where pawns can double push
+    int prom_r = white ? 7 : 0;  // Rank where pawns promote
+
+    int nr = r + dir;
+    if (nr >= 0 && nr < 8) {
+        // 1. Move forward 1 square
+        int to = nr * 8 + f;
+        if (p->b[to] == '.') {
+            if (nr == prom_r) {
+                add_move(moves, n, from, to, 'q');
+                add_move(moves, n, from, to, 'r');
+                add_move(moves, n, from, to, 'b');
+                add_move(moves, n, from, to, 'n');
+            } else {
+                add_move(moves, n, from, to, 0);
+                // 2. Move forward 2 squares (only if forward 1 is also empty and on start rank)
+                if (r == start_r) {
+                    int to2 = (r + 2 * dir) * 8 + f;
+                    if (p->b[to2] == '.') {
+                        add_move(moves, n, from, to2, 0);
+                    }
+                }
+            }
+        }
+        
+        // 3. Diagonal captures
+        for (int df = -1; df <= 1; df += 2) {
+            int nf = f + df;
+            if (nf >= 0 && nf < 8) {
+                int to_cap = nr * 8 + nf;
+                char target = p->b[to_cap];
+                // Can capture if square contains an enemy piece
+                if (target != '.' && is_white_piece(target) != white) {
+                    if (nr == prom_r) {
+                        add_move(moves, n, from, to_cap, 'q');
+                        add_move(moves, n, from, to_cap, 'r');
+                        add_move(moves, n, from, to_cap, 'b');
+                        add_move(moves, n, from, to_cap, 'n');
+                    } else {
+                        add_move(moves, n, from, to_cap, 0);
+                    }
+                }
+            }
+        }
+    }
+}
