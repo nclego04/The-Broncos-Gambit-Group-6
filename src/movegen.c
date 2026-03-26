@@ -188,3 +188,24 @@ void gen_rook(const Pos *p, int from, int white, const int dirs[][2], int dcount
         }
     }
 }
+
+/**
+ * Generates all pseudo-legal knight moves.
+ */
+void gen_knight(const Pos *p, int from, int white, Move *moves, int *n) {
+    int r = from / 8, f = from % 8;
+    // All 8 possible "L" shape jump offsets for a knight
+    static const int nd[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+    
+    for (int i = 0; i < 8; i++) {
+        int nr = r + nd[i][0], nf = f + nd[i][1];
+        if (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
+            int to = nr * 8 + nf;
+            char target = p->b[to];
+            // Can move to empty squares or capture enemy pieces
+            if (target == '.' || is_white_piece(target) != white) {
+                add_move(moves, n, from, to, 0);
+            }
+        }
+    }
+}
