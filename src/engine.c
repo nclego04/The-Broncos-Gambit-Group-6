@@ -1,36 +1,43 @@
+/**
+ * @file engine.c
+ * @brief Main Universal Chess Interface (UCI) loop and core board state management.
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
-// Minimal UCI engine: first legal move.
-// No castling, no en-passant; promotions -> queen only.
+#include "movegen.h"
+#include "algorithm.h"
 
-typedef struct {
-    int from, to;
-    char promo;
-} Move;
-
-typedef struct {
-    char b[64];
-    int white_to_move;
-} Pos;
-
+/**
+ * @brief Converts a standard algebraic notation square (e.g., "e2") to a 0-63 board index.
+ */
 static int sq_index(const char *s) {
     int file = s[0] - 'a';
     int rank = s[1] - '1';
     return rank * 8 + file;
 }
 
-static void index_to_sq(int idx, char out[3]) {
+/**
+ * @brief Converts a 0-63 board index back to standard algebraic notation.
+ */
+void index_to_sq(int idx, char out[3]) {
     out[0] = (char) ('a' + (idx % 8));
     out[1] = (char) ('1' + (idx / 8));
     out[2] = 0;
 }
 
-static void pos_from_fen(Pos *p, const char *fen) {
+/**
+ * @brief Initializes a position state struct from a standard FEN string.
+ * @param p The position pointer to initialize.
+ * @param fen The Forsyth-Edwards Notation string.
+ */
+void pos_from_fen(Pos *p, const char *fen) {
     memset(p->b, '.', 64);
     p->white_to_move = 1;
+    p->castling = 0;
+    p->ep = -1;
 
     char buf[256];
     strncpy(buf, fen, sizeof(buf)-1);
@@ -41,7 +48,23 @@ static void pos_from_fen(Pos *p, const char *fen) {
     char *stm = strtok_r(NULL, " ", &save);
     if (stm) p->white_to_move = (strcmp(stm, "w") == 0);
 
+    // Parse castling rights into the bitmask representation
+    char *castle = strtok_r(NULL, " ", &save);
+    if (castle && strcmp(castle, "-") != 0) {
+        if (strchr(castle, 'K')) p->castling |= 1;
+        if (strchr(castle, 'Q')) p->castling |= 2;
+        if (strchr(castle, 'k')) p->castling |= 4;
+        if (strchr(castle, 'q')) p->castling |= 8;
+    }
+
+    // Parse the En Passant target square
+    char *ep = strtok_r(NULL, " ", &save);
+    if (ep && strcmp(ep, "-") != 0) {
+        p->ep = sq_index(ep);
+    }
+
     int rank = 7, file = 0;
+    // Parse piece placement data
     for (size_t i = 0; placement && placement[i]; i++) {
         char c = placement[i];
         if (c == '/') {
@@ -60,12 +83,18 @@ static void pos_from_fen(Pos *p, const char *fen) {
 }
 
 static void pos_start(Pos *p) {
-    pos_from_fen(p, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1");
+    pos_from_fen(p, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
-static int is_white_piece(char c) { return c >= 'A' && c <= 'Z'; }
+int is_white_piece(char c) { return c >= 'A' && c <= 'Z'; }
 
-static int is_square_attacked(const Pos *p, int sq, int by_white) {
+/**
+ * @brief Checks if a given square is attacked by a specific color.
+ * @param p The board position.
+ * @param sq The index of the square to check.
+ * @param by_white 1 to check for white attackers, 0 for black attackers.
+ */
+int is_square_attacked(const Pos *p, int sq, int by_white) {
     int r = sq / 8, f = sq % 8;
 
     // pawns
@@ -105,7 +134,7 @@ static int is_square_attacked(const Pos *p, int sq, int by_white) {
         while (cr >= 0 && cr < 8 && cf >= 0 && cf < 8) {
             int idx = cr * 8 + cf;
             char pc = p->b[idx];
-            if (pc != '.') {
+            if (pc != '.') { // Collision detected
                 int pc_white = is_white_piece(pc);
                 if (pc_white == by_white) {
                     char up = (char) toupper((unsigned char) pc);
@@ -137,6 +166,9 @@ static int is_square_attacked(const Pos *p, int sq, int by_white) {
     return 0;
 }
 
+/**
+ * @brief Helper function to quickly ascertain if the specified side's king is in check.
+ */
 static int in_check(const Pos *p, int white_king) {
     char k = white_king ? 'K' : 'k';
     int ksq = -1;
@@ -148,7 +180,12 @@ static int in_check(const Pos *p, int white_king) {
     return is_square_attacked(p, ksq, !white_king);
 }
 
-static Pos make_move(const Pos *p, Move m) {
+/**
+ * @brief Executes a move on the board and produces a new position state.
+ * Handles special moves like castling, en passant, and promotions automatically.
+ * @return A new Pos struct representing the board after the move.
+ */
+Pos make_move(const Pos *p, Move m) {
     Pos np = *p;
     char piece = np.b[m.from];
     np.b[m.from] = '.';
@@ -159,41 +196,55 @@ static Pos make_move(const Pos *p, Move m) {
                      : (char) tolower((unsigned char) m.promo);
     }
     np.b[m.to] = placed;
+
+    // En passant capture processing
+    if ((piece == 'P' || piece == 'p') && m.to == p->ep && (m.to % 8 != m.from % 8)) {
+        int cap_sq = p->white_to_move ? m.to - 8 : m.to + 8; // Remove the captured pawn vertically
+        np.b[cap_sq] = '.';
+    }
+
+    // Castling processing
+    if ((piece == 'K' || piece == 'k') && abs(m.to - m.from) == 2) {
+        if (m.to == 6) { np.b[5] = 'R'; np.b[7] = '.'; }         // White Kingside
+        else if (m.to == 2) { np.b[3] = 'R'; np.b[0] = '.'; }    // White Queenside
+        else if (m.to == 62) { np.b[61] = 'r'; np.b[63] = '.'; } // Black Kingside
+        else if (m.to == 58) { np.b[59] = 'r'; np.b[56] = '.'; } // Black Queenside
+    }
+
+    // Update en passant square
+    np.ep = -1;
+    if ((piece == 'P' || piece == 'p') && abs(m.from - m.to) == 16) {
+        np.ep = p->white_to_move ? m.from + 8 : m.from - 8;
+    }
+
+    // Update castling rights
+    // Disable rights if a king moves, or if rooks move/are captured
+    if (piece == 'K') np.castling &= ~3;   // Both White rights
+    else if (piece == 'k') np.castling &= ~12; // Both Black rights
+    if (m.from == 7 || m.to == 7) np.castling &= ~1;   // WK rook
+    if (m.from == 0 || m.to == 0) np.castling &= ~2;   // WQ rook
+    if (m.from == 63 || m.to == 63) np.castling &= ~4; // BK rook
+    if (m.from == 56 || m.to == 56) np.castling &= ~8; // BQ rook
+
     np.white_to_move = !p->white_to_move;
     return np;
 }
 
-static void add_move(Move *moves, int *n, int from, int to, char promo) {
+/**
+ * @brief Helper utility to safely add a formatted move to a target move list.
+ */
+void add_move(Move *moves, int *n, int from, int to, char promo) {
     moves[*n].from = from;
     moves[*n].to = to;
     moves[*n].promo = promo;
     (*n)++;
 }
 
-static void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
-
-}
-
-static void gen_knight(const Pos *p, int from, int white, Move *moves, int *n) {
-
-}
-
-static void gen_queen(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
-
-}
-
-static void gen_bishop(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
-
-}
-
-static void gen_rook(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
-
-}
-
-static void gen_king(const Pos *p, int from, int white, Move *moves, int *n) {
-
-}
-
+/**
+ * @brief Populates the `moves` array with all pseudo-legal moves for the active side.
+ * Pseudo-legal moves adhere to piece movement geometry but don't consider if the king is left in check.
+ * @return The number of pseudo-legal moves generated.
+ */
 static int pseudo_legal_moves(const Pos *p, Move *moves) {
     int n = 0;
     int us_white = p->white_to_move;
@@ -219,13 +270,19 @@ static int pseudo_legal_moves(const Pos *p, Move *moves) {
     return n;
 }
 
-static int legal_moves(const Pos *p, Move *out) {
+/**
+ * @brief Generates strictly legal moves by validating pseudo-legal ones against king safety.
+ * @param p The board position state.
+ * @param out Array populated with valid, legal moves.
+ * @return Number of legal moves stored in `out`.
+ */
+int legal_moves(const Pos *p, Move *out) {
     Move tmp[256];
     int pn = pseudo_legal_moves(p, tmp);
     int n = 0;
     for (int i = 0; i < pn; i++) {
         Pos np = make_move(p, tmp[i]);
-        // after move, side who just moved is !np.white_to_move
+        // After the move, we must ensure the side who just moved isn't in check
         if (!in_check(&np, !np.white_to_move)) {
             out[n++] = tmp[i];
         }
@@ -233,6 +290,10 @@ static int legal_moves(const Pos *p, Move *out) {
     return n;
 }
 
+/**
+ * @brief Parses a UCI move string (e.g., "e2e4" or "e7e8q") and applies it to the position.
+ * @param uci The standard coordinate notation string.
+ */
 static void apply_uci_move(Pos *p, const char *uci) {
     if (!uci || strlen(uci) < 4) return;
     Move m;
@@ -243,17 +304,22 @@ static void apply_uci_move(Pos *p, const char *uci) {
     *p = np;
 }
 
+/**
+ * @brief Parses the UCI "position" command string, updating the engine's internal board state.
+ * Handles both "startpos" initialization and raw FEN string setups, followed by a move list.
+ * @param line The full command string from standard input.
+ */
 static void parse_position(Pos *p, const char *line) {
     // position startpos [moves ...]
     // position fen <6 fields> [moves ...]
-    char buf[1024];
+    char buf[8192];
     strncpy(buf, line, sizeof(buf)-1);
     buf[sizeof(buf) - 1] = 0;
 
-    char *toks[128];
+    char *toks[2048];
     int nt = 0;
     char *save = NULL;
-    for (char *tok = strtok_r(buf, " \t\r\n", &save); tok && nt < 128; tok = strtok_r(NULL, " \t\r\n", &save)) {
+    for (char *tok = strtok_r(buf, " \t\r\n", &save); tok && nt < 2048; tok = strtok_r(NULL, " \t\r\n", &save)) {
         toks[nt++] = tok;
     }
 
@@ -278,7 +344,7 @@ static void parse_position(Pos *p, const char *line) {
     }
 }
 
-static void print_bestmove(Move m) {
+void print_bestmove(Move m) {
     char a[3], b[3];
     index_to_sq(m.from, a);
     index_to_sq(m.to, b);
@@ -291,7 +357,7 @@ int main(void) {
     Pos pos;
     pos_start(&pos);
 
-    char line[1024];
+    char line[8192];
     while (fgets(line, sizeof(line), stdin)) {
         // trim
         size_t len = strlen(line);
@@ -299,8 +365,8 @@ int main(void) {
         if (!len) continue;
 
         if (strcmp(line, "uci") == 0) {
-            printf("id name team_c\n");
-            printf("id author team_c_bryan\n");
+            printf("id name team6\n");
+            printf("id author group6\n");
             printf("uciok\n");
             fflush(stdout);
         } else if (strcmp(line, "isready") == 0) {
@@ -311,14 +377,9 @@ int main(void) {
         } else if (strncmp(line, "position", 8) == 0) {
             parse_position(&pos, line);
         } else if (strncmp(line, "go", 2) == 0) {
-            Move ms[256];
-            int n = legal_moves(&pos, ms);
-            if (n <= 0) {
-                printf("bestmove 0000\n");
-                fflush(stdout);
-            } else {
-                print_bestmove(ms[0]);
-            }
+            search_position(&pos, line);
+        } else if (strncmp(line, "bench", 5) == 0) {
+            run_benchmarks();
         } else if (strcmp(line, "quit") == 0) {
             break;
         }

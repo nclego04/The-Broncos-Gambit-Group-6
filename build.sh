@@ -1,4 +1,4 @@
 #!/bin/bash
 set -e
-clang -O2 -std=c11 -Wall -Wextra -o engine src/engine.c
+gcc -O2 -std=gnu11 -Wall -Wextra -o engine src/engine.c src/movegen.c src/algorithm.c
 echo "Built ./engine"
