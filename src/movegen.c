@@ -107,3 +107,36 @@ void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
         }
     }
 }
+
+/**
+ * Core move generation logic for sliding pieces (Queen, Rook, Bishop).
+ * Follows directional rays until encountering the board edge or another piece.
+ */
+static void gen_slider(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
+    int r = from / 8, f = from % 8;
+    for (int i = 0; i < dcount; i++) {
+        int nr = r + dirs[i][0], nf = f + dirs[i][1];
+        while (nr >= 0 && nr < 8 && nf >= 0 && nf < 8) {
+            int to = nr * 8 + nf;
+            char target = p->b[to];
+            if (target == '.') {
+                add_move(moves, n, from, to, 0);
+            } else {
+                // Stop sliding on piece collision; add capture if it's an enemy
+                if (is_white_piece(target) != white) {
+                    add_move(moves, n, from, to, 0);
+                }
+                break;
+            }
+            nr += dirs[i][0];
+            nf += dirs[i][1];
+        }
+    }
+}
+
+/**
+ * Generates all pseudo-legal queen moves (sliding in all 8 directions).
+ */
+void gen_queen(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
+    gen_slider(p, from, white, dirs, dcount, moves, n);
+}
