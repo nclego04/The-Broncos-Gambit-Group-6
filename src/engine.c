@@ -8,8 +8,6 @@
 #include <ctype.h>
 
 #include "movegen.h"
-#include "algorithm.h"
-#include "benchmark.h"
 
 /**
  * @brief Converts a standard algebraic notation square (e.g., "e2") to a 0-63 board index.
