@@ -9,7 +9,6 @@
 
 #include "movegen.h"
 #include "algorithm.h"
-#include "benchmark.h"
 
 /**
  * @brief Converts a standard algebraic notation square (e.g., "e2") to a 0-63 board index.
@@ -379,8 +378,6 @@ int main(void) {
             parse_position(&pos, line);
         } else if (strncmp(line, "go", 2) == 0) {
             search_position(&pos, line);
-        } else if (strncmp(line, "bench", 5) == 0) {
-            run_benchmarks();
         } else if (strcmp(line, "quit") == 0) {
             break;
         }
