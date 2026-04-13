@@ -3,16 +3,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#else
 #include <sys/time.h>
+#endif
 
 static long long stop_time = 0;
 static int stop_search = 0;
 static int nodes = 0;
 
 static long long get_time_ms(void) {
+#if defined(_WIN32) || defined(_WIN64)
+    return GetTickCount64();
+#else
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+#endif
 }
 
 // Basic Piece-Square Tables (simplified, mapping center control and piece activity)
@@ -111,13 +120,44 @@ static int evaluate(const Pos *p) {
     return p->white_to_move ? score : -score;
 }
 
+static int quiescence(const Pos *p, int alpha, int beta) {
+    if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
+        stop_search = 1;
+        return 0;
+    }
+    
+    int stand_pat = evaluate(p);
+    if (stand_pat >= beta) return beta;
+    if (alpha < stand_pat) alpha = stand_pat;
+    
+    Move moves[256];
+    int num_moves = legal_moves(p, moves);
+    
+    for (int i = 0; i < num_moves; i++) {
+        char target = p->b[moves[i].to];
+        char piece = p->b[moves[i].from];
+        int is_ep = ((piece == 'P' || piece == 'p') && moves[i].to == p->ep);
+        
+        // Only consider captures and promotions in quiescence search
+        if (target == '.' && !is_ep && moves[i].promo == 0) continue;
+        
+        Pos np = make_move(p, moves[i]);
+        int score = -quiescence(&np, -beta, -alpha);
+        if (stop_search) return 0;
+        
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+    }
+    return alpha;
+}
+
 static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
     if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
         stop_search = 1;
         return 0;
     }
     
-    if (depth == 0) return evaluate(p);
+    if (depth == 0) return quiescence(p, alpha, beta);
     
     Move moves[256];
     int num_moves = legal_moves(p, moves);
