@@ -91,32 +91,248 @@ static const int king_pst[64] = {
      20, 30, 10,  0,  0, 10, 30, 20
 };
 
+static int get_piece_value(char c) {
+    switch (toupper((unsigned char)c)) {
+        case 'P': return 100;
+        case 'N': return 320;
+        case 'B': return 330;
+        case 'R': return 500;
+        case 'Q': return 900;
+        case 'K': return 20000;
+        default: return 0;
+    }
+}
+
+static void sort_moves(const Pos *p, Move *moves, int num_moves) {
+    int scores[256];
+    for (int i = 0; i < num_moves; i++) {
+        int score = 0;
+        char target = p->b[moves[i].to];
+        char piece = p->b[moves[i].from];
+        
+        // MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
+        if (target != '.') {
+            score = 10000 + 10 * get_piece_value(target) - get_piece_value(piece);
+        }
+        
+        if (moves[i].promo) {
+            score += 20000 + get_piece_value(moves[i].promo);
+        }
+        
+        scores[i] = score;
+    }
+    
+    // Insertion sort
+    for (int i = 0; i < num_moves - 1; i++) {
+        int best_idx = i;
+        for (int j = i + 1; j < num_moves; j++) {
+            if (scores[j] > scores[best_idx]) best_idx = j;
+        }
+        if (best_idx != i) {
+            int tmp_score = scores[i]; scores[i] = scores[best_idx]; scores[best_idx] = tmp_score;
+            Move tmp_move = moves[i]; moves[i] = moves[best_idx]; moves[best_idx] = tmp_move;
+        }
+    }
+}
+
+static const int eg_pawn_pst[64] = {
+     0,  0,  0,  0,  0,  0,  0,  0,
+    80, 80, 80, 80, 80, 80, 80, 80,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    30, 30, 30, 30, 30, 30, 30, 30,
+    20, 20, 20, 20, 20, 20, 20, 20,
+    10, 10, 10, 10, 10, 10, 10, 10,
+     0,  0,  0,  0,  0,  0,  0,  0,
+     0,  0,  0,  0,  0,  0,  0,  0
+};
+
+static const int eg_king_pst[64] = {
+    -50,-40,-30,-20,-20,-30,-40,-50,
+    -30,-20,-10,  0,  0,-10,-20,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-30,  0,  0,  0,  0,-30,-30,
+    -50,-30,-30,-30,-30,-30,-30,-50
+};
+
 static int evaluate(const Pos *p) {
-    int score = 0;
+    int mg_score[2] = {0, 0}; // [0] Black, [1] White
+    int eg_score[2] = {0, 0};
+    int game_phase = 0;
+    
+    int pawns[2][8] = {{0}}; 
+    int min_pawn_rank[2][8];
+    int max_pawn_rank[2][8];
+    for (int c = 0; c < 2; c++) {
+        for (int f = 0; f < 8; f++) {
+            min_pawn_rank[c][f] = 8;
+            max_pawn_rank[c][f] = -1;
+        }
+    }
+    int bishops[2] = {0, 0};
+
+    // 1. Gather structural data and calculate game phase
+    for (int r = 0; r < 8; r++) {
+        for (int f = 0; f < 8; f++) {
+            char pc = p->b[r * 8 + f];
+            if (pc == '.') continue;
+            
+            int is_w = is_white_piece(pc);
+            char up = (char)toupper((unsigned char)pc);
+            
+            if (up == 'P') {
+                pawns[is_w][f]++;
+                if (r < min_pawn_rank[is_w][f]) min_pawn_rank[is_w][f] = r;
+                if (r > max_pawn_rank[is_w][f]) max_pawn_rank[is_w][f] = r;
+            } else if (up == 'B') {
+                bishops[is_w]++;
+                game_phase += 1;
+            } else if (up == 'N') {
+                game_phase += 1;
+            } else if (up == 'R') {
+                game_phase += 2;
+            } else if (up == 'Q') {
+                game_phase += 4;
+            }
+        }
+    }
+    if (game_phase > 24) game_phase = 24;
+
+    // 2. Evaluate pieces
     for (int r = 0; r < 8; r++) {
         for (int f = 0; f < 8; f++) {
             int sq = r * 8 + f;
             char pc = p->b[sq];
             if (pc == '.') continue;
             
-            int is_white = is_white_piece(pc);
+            int is_w = is_white_piece(pc);
             char up = (char)toupper((unsigned char)pc);
             
-            int pst_r = is_white ? (7 - r) : r;
+            int pst_r = is_w ? (7 - r) : r;
             int pst_sq = pst_r * 8 + f;
             
-            int val = 0;
+            int mg = 0, eg = 0;
+            int enemy = !is_w;
+            
             switch (up) {
-                case 'P': val = 100 + pawn_pst[pst_sq]; break;
-                case 'N': val = 320 + knight_pst[pst_sq]; break;
-                case 'B': val = 330 + bishop_pst[pst_sq]; break;
-                case 'R': val = 500 + rook_pst[pst_sq]; break;
-                case 'Q': val = 900 + queen_pst[pst_sq]; break;
-                case 'K': val = 20000 + king_pst[pst_sq]; break;
+                case 'P': {
+                    mg += 100 + pawn_pst[pst_sq];
+                    eg += 120 + eg_pawn_pst[pst_sq];
+                    
+                    // Doubled Pawns
+                    if (pawns[is_w][f] > 1) { mg -= 15; eg -= 20; }
+                    
+                    // Isolated Pawns
+                    int isolated = 1;
+                    if (f > 0 && pawns[is_w][f - 1] > 0) isolated = 0;
+                    if (f < 7 && pawns[is_w][f + 1] > 0) isolated = 0;
+                    if (isolated) { mg -= 20; eg -= 20; }
+                    
+                    // Passed Pawns
+                    int passed = 1;
+                    if (is_w) {
+                        if (max_pawn_rank[enemy][f] > r) passed = 0;
+                        if (f > 0 && max_pawn_rank[enemy][f - 1] > r) passed = 0;
+                        if (f < 7 && max_pawn_rank[enemy][f + 1] > r) passed = 0;
+                    } else {
+                        if (min_pawn_rank[enemy][f] != 8 && min_pawn_rank[enemy][f] < r) passed = 0;
+                        if (f > 0 && min_pawn_rank[enemy][f - 1] != 8 && min_pawn_rank[enemy][f - 1] < r) passed = 0;
+                        if (f < 7 && min_pawn_rank[enemy][f + 1] != 8 && min_pawn_rank[enemy][f + 1] < r) passed = 0;
+                    }
+                    if (passed) {
+                        int r_bonus = is_w ? r : (7 - r);
+                        mg += r_bonus * 10;
+                        eg += r_bonus * 20;
+                    }
+                    break;
+                }
+                case 'N':
+                    mg += 320 + knight_pst[pst_sq];
+                    eg += 300 + knight_pst[pst_sq];
+                    break;
+                case 'B':
+                    mg += 330 + bishop_pst[pst_sq];
+                    eg += 330 + bishop_pst[pst_sq];
+                    break;
+                case 'R':
+                    mg += 500 + rook_pst[pst_sq];
+                    eg += 500 + rook_pst[pst_sq];
+                    // Open and Semi-Open files
+                    if (pawns[0][f] == 0 && pawns[1][f] == 0) {
+                        mg += 30; eg += 30;
+                    } else if (pawns[is_w][f] == 0) {
+                        mg += 15; eg += 15;
+                    }
+                    // 7th rank
+                    if ((is_w && r == 6) || (!is_w && r == 1)) {
+                        mg += 30; eg += 30;
+                    }
+                    break;
+                case 'Q':
+                    mg += 900 + queen_pst[pst_sq];
+                    eg += 900 + queen_pst[pst_sq];
+                    break;
+                case 'K':
+                    mg += 20000 + king_pst[pst_sq];
+                    eg += 20000 + eg_king_pst[pst_sq];
+                    
+                    // King Safety (Pawn Shield & Open Files)
+                    if (f > 0 && pawns[is_w][f - 1] == 0) mg -= 15;
+                    if (pawns[is_w][f] == 0) mg -= 20;
+                    if (f < 7 && pawns[is_w][f + 1] == 0) mg -= 15;
+                    break;
             }
-            score += is_white ? val : -val;
+            
+            // Mobility for sliding pieces
+            if (up == 'B' || up == 'R' || up == 'Q') {
+                int mob = 0;
+                static const int dirs[8][2] = {
+                    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+                    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+                };
+                if (up == 'B' || up == 'Q') {
+                    for (int di = 4; di < 8; di++) {
+                        int cr = r + dirs[di][0], cf = f + dirs[di][1];
+                        while (cr >= 0 && cr < 8 && cf >= 0 && cf < 8) {
+                            mob++;
+                            if (p->b[cr * 8 + cf] != '.') break;
+                            cr += dirs[di][0]; cf += dirs[di][1];
+                        }
+                    }
+                }
+                if (up == 'R' || up == 'Q') {
+                    for (int di = 0; di < 4; di++) {
+                        int cr = r + dirs[di][0], cf = f + dirs[di][1];
+                        while (cr >= 0 && cr < 8 && cf >= 0 && cf < 8) {
+                            mob++;
+                            if (p->b[cr * 8 + cf] != '.') break;
+                            cr += dirs[di][0]; cf += dirs[di][1];
+                        }
+                    }
+                }
+                mg += mob * 2;
+                eg += mob * 3;
+            }
+            
+            mg_score[is_w] += mg;
+            eg_score[is_w] += eg;
         }
     }
+    
+    // Bishop pair bonus
+    if (bishops[1] >= 2) { mg_score[1] += 40; eg_score[1] += 50; }
+    if (bishops[0] >= 2) { mg_score[0] += 40; eg_score[0] += 50; }
+    
+    int mg_eval = mg_score[1] - mg_score[0];
+    int eg_eval = eg_score[1] - eg_score[0];
+    
+    int mg_weight = game_phase;
+    int eg_weight = 24 - game_phase;
+    
+    int score = (mg_eval * mg_weight + eg_eval * eg_weight) / 24;
+    
     return p->white_to_move ? score : -score;
 }
 
@@ -133,13 +349,13 @@ static int quiescence(const Pos *p, int alpha, int beta) {
     Move moves[256];
     int num_moves = legal_moves(p, moves);
     
+    sort_moves(p, moves, num_moves);
+    
     for (int i = 0; i < num_moves; i++) {
         char target = p->b[moves[i].to];
-        char piece = p->b[moves[i].from];
-        int is_ep = ((piece == 'P' || piece == 'p') && moves[i].to == p->ep);
         
         // Only consider captures and promotions in quiescence search
-        if (target == '.' && !is_ep && moves[i].promo == 0) continue;
+        if (target == '.' && moves[i].promo == 0) continue;
         
         Pos np = make_move(p, moves[i]);
         int score = -quiescence(&np, -beta, -alpha);
@@ -161,6 +377,8 @@ static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move
     
     Move moves[256];
     int num_moves = legal_moves(p, moves);
+    
+    sort_moves(p, moves, num_moves);
     
     if (num_moves == 0) {
         int ksq = -1;
@@ -210,16 +428,31 @@ void search_position(const Pos *p, const char *go_cmd) {
     if (stop_time < start_time) stop_time = start_time;
     stop_search = nodes = 0;
     
+    FILE *metrics_file = fopen("tests/search_metrics.txt", "a");
+    if (metrics_file) {
+        fprintf(metrics_file, "--- Searching Move ---\n");
+        fclose(metrics_file);
+    }
+
     Move best_move = {0, 0, 0};
     Move current_best = {0, 0, 0};
-    int completed_depth = 0;
     
     // Iterative Deepening
     for (int depth = 1; depth <= 64; depth++) {
         int score = negamax(p, depth, -30000, 30000, &current_best);
         if (stop_search) break;
         best_move = current_best;
-        completed_depth = depth;
+        
+        long long current_elapsed = get_time_ms() - start_time;
+        long long calc_elapsed = current_elapsed == 0 ? 1 : current_elapsed;
+        long long current_nps = (long long)nodes * 1000 / calc_elapsed;
+        
+        metrics_file = fopen("tests/search_metrics.txt", "a");
+        if (metrics_file) {
+            fprintf(metrics_file, "Depth %2d | Nodes: %8d | Time: %5lld ms | NPS: %8lld\n", depth, nodes, current_elapsed, current_nps);
+            fclose(metrics_file);
+        }
+
         if (score > 19000 || score < -19000) break; // Stop early on mate
         if (get_time_ms() - start_time > movetime / 2) break; // Risking overstep on next depth
     }
@@ -230,16 +463,6 @@ void search_position(const Pos *p, const char *go_cmd) {
         if (legal_moves(p, ms) > 0) best_move = ms[0];
     }
     
-    long long elapsed = get_time_ms() - start_time;
-    if (elapsed == 0) elapsed = 1; // Prevent division by zero
-    long long nps = (long long)nodes * 1000 / elapsed;
-
-    FILE *f = fopen("tests/search_metrics.txt", "a");
-    if (f) {
-        fprintf(f, "Depth: %d | Nodes: %d | Time: %lld ms | NPS: %lld\n", completed_depth, nodes, elapsed, nps);
-        fclose(f);
-    }
-
     if (best_move.from == 0 && best_move.to == 0) {
         printf("bestmove 0000\n");
         fflush(stdout);

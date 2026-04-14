@@ -197,12 +197,6 @@ Pos make_move(const Pos *p, Move m) {
     }
     np.b[m.to] = placed;
 
-    // En passant capture processing
-    if ((piece == 'P' || piece == 'p') && m.to == p->ep && (m.to % 8 != m.from % 8)) {
-        int cap_sq = p->white_to_move ? m.to - 8 : m.to + 8; // Remove the captured pawn vertically
-        np.b[cap_sq] = '.';
-    }
-
     // Castling processing
     if ((piece == 'K' || piece == 'k') && abs(m.to - m.from) == 2) {
         if (m.to == 6) { np.b[5] = 'R'; np.b[7] = '.'; }         // White Kingside
@@ -211,12 +205,7 @@ Pos make_move(const Pos *p, Move m) {
         else if (m.to == 58) { np.b[59] = 'r'; np.b[56] = '.'; } // Black Queenside
     }
 
-    // Update en passant square
     np.ep = -1;
-    if ((piece == 'P' || piece == 'p') && abs(m.from - m.to) == 16) {
-        np.ep = p->white_to_move ? m.from + 8 : m.from - 8;
-    }
-
     // Update castling rights
     // Disable rights if a king moves, or if rooks move/are captured
     if (piece == 'K') np.castling &= ~3;   // Both White rights
@@ -356,6 +345,9 @@ void print_bestmove(Move m) {
 int main(void) {
     Pos pos;
     pos_start(&pos);
+    
+    FILE *f = fopen("tests/search_metrics.txt", "w");
+    if (f) fclose(f);
 
     char line[8192];
     while (fgets(line, sizeof(line), stdin)) {
@@ -374,6 +366,8 @@ int main(void) {
             fflush(stdout);
         } else if (strcmp(line, "ucinewgame") == 0) {
             pos_start(&pos);
+            FILE *f = fopen("tests/search_metrics.txt", "w");
+            if (f) fclose(f);
         } else if (strncmp(line, "position", 8) == 0) {
             parse_position(&pos, line);
         } else if (strncmp(line, "go", 2) == 0) {
