@@ -108,7 +108,6 @@ static const int eg_king_pst[64] = {
     -50,-30,-30,-30,-30,-30,-30,-50
 };
 
-
 /**
  * @brief Gets the current system time in milliseconds.
  * Handles cross-platform differences between Windows and POSIX systems.
