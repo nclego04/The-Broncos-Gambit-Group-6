@@ -15,6 +15,53 @@ static int stop_search = 0;
 static int nodes = 0;
 
 /**
+ * @brief The core Negamax search algorithm with Alpha-Beta pruning.
+ * Recursively explores the game tree up to the specified depth.
+ * @param p The current board position.
+ * @param depth The remaining search depth.
+ * @param alpha The lower bound for the search window.
+ * @param beta The upper bound for the search window.
+ * @param best_move Pointer to store the best move found at the root.
+ * @return The best score found in centipawns.
+ */
+static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
+    if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
+        stop_search = 1;
+        return 0;
+    }
+    
+    if (depth == 0) return evaluate(p);
+    
+    Move moves[256];
+    int num_moves = legal_moves(p, moves);
+    
+    if (num_moves == 0) {
+        int ksq = -1;
+        char king = p->white_to_move ? 'K' : 'k';
+        for (int i = 0; i < 64; i++) if (p->b[i] == king) { ksq = i; break; }
+        if (ksq >= 0 && is_square_attacked(p, ksq, !p->white_to_move)) {
+            return -20000 + (64 - depth); // Checkmate
+        }
+        return 0; // Stalemate
+    }
+    
+    int best_score = -30000;
+    for (int i = 0; i < num_moves; i++) {
+        Pos np = make_move(p, moves[i]);
+        int score = -negamax(&np, depth - 1, -beta, -alpha, NULL);
+        if (stop_search) return 0;
+        
+        if (score > best_score) {
+            best_score = score;
+            if (best_move) *best_move = moves[i];
+        }
+        if (best_score > alpha) alpha = best_score;
+        if (alpha >= beta) break; // Alpha-Beta cutoff
+    }
+    return best_score;
+}
+
+/**
  * @brief Endgame Piece-Square Tables (PSTs) for evaluating piece positioning in the late game.
  */
 static const int eg_pawn_pst[64] = {
