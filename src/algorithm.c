@@ -14,6 +14,10 @@ static long long stop_time = 0;
 static int stop_search = 0;
 static int nodes = 0;
 
+/**
+ * @brief Gets the current system time in milliseconds.
+ * Handles cross-platform differences between Windows and POSIX systems.
+ */
 static long long get_time_ms(void) {
 #if defined(_WIN32) || defined(_WIN64)
     return GetTickCount64();
@@ -91,6 +95,11 @@ static const int king_pst[64] = {
      20, 30, 10,  0,  0, 10, 30, 20
 };
 
+/**
+ * @brief Returns the base material value of a given piece.
+ * @param c The piece character (case-insensitive).
+ * @return The evaluation value in centipawns.
+ */
 static int get_piece_value(char c) {
     switch (toupper((unsigned char)c)) {
         case 'P': return 100;
@@ -103,6 +112,13 @@ static int get_piece_value(char c) {
     }
 }
 
+/**
+ * @brief Sorts a list of pseudo-legal moves to optimize Alpha-Beta pruning.
+ * Applies the MVV-LVA (Most Valuable Victim - Least Valuable Attacker) heuristic.
+ * @param p The current board position.
+ * @param moves The array of moves to sort.
+ * @param num_moves The total number of moves in the array.
+ */
 static void sort_moves(const Pos *p, Move *moves, int num_moves) {
     int scores[256];
     for (int i = 0; i < num_moves; i++) {
@@ -157,6 +173,13 @@ static const int eg_king_pst[64] = {
     -50,-30,-30,-30,-30,-30,-30,-50
 };
 
+/**
+ * @brief Statically evaluates the board state from the perspective of the side to move.
+ * Factors in material, Piece-Square Tables (PSTs), game phase (tapered evaluation),
+ * pawn structures, and king safety.
+ * @param p The board position to evaluate.
+ * @return The evaluation score in centipawns.
+ */
 static int evaluate(const Pos *p) {
     int mg_score[2] = {0, 0}; // [0] Black, [1] White
     int eg_score[2] = {0, 0};
@@ -259,11 +282,9 @@ static int evaluate(const Pos *p) {
                 case 'R':
                     mg += 500 + rook_pst[pst_sq];
                     eg += 500 + rook_pst[pst_sq];
-                    // Open and Semi-Open files
+                    // Open files
                     if (pawns[0][f] == 0 && pawns[1][f] == 0) {
                         mg += 30; eg += 30;
-                    } else if (pawns[is_w][f] == 0) {
-                        mg += 15; eg += 15;
                     }
                     // 7th rank
                     if ((is_w && r == 6) || (!is_w && r == 1)) {
@@ -283,37 +304,6 @@ static int evaluate(const Pos *p) {
                     if (pawns[is_w][f] == 0) mg -= 20;
                     if (f < 7 && pawns[is_w][f + 1] == 0) mg -= 15;
                     break;
-            }
-            
-            // Mobility for sliding pieces
-            if (up == 'B' || up == 'R' || up == 'Q') {
-                int mob = 0;
-                static const int dirs[8][2] = {
-                    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
-                    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-                };
-                if (up == 'B' || up == 'Q') {
-                    for (int di = 4; di < 8; di++) {
-                        int cr = r + dirs[di][0], cf = f + dirs[di][1];
-                        while (cr >= 0 && cr < 8 && cf >= 0 && cf < 8) {
-                            mob++;
-                            if (p->b[cr * 8 + cf] != '.') break;
-                            cr += dirs[di][0]; cf += dirs[di][1];
-                        }
-                    }
-                }
-                if (up == 'R' || up == 'Q') {
-                    for (int di = 0; di < 4; di++) {
-                        int cr = r + dirs[di][0], cf = f + dirs[di][1];
-                        while (cr >= 0 && cr < 8 && cf >= 0 && cf < 8) {
-                            mob++;
-                            if (p->b[cr * 8 + cf] != '.') break;
-                            cr += dirs[di][0]; cf += dirs[di][1];
-                        }
-                    }
-                }
-                mg += mob * 2;
-                eg += mob * 3;
             }
             
             mg_score[is_w] += mg;
@@ -336,6 +326,14 @@ static int evaluate(const Pos *p) {
     return p->white_to_move ? score : -score;
 }
 
+/**
+ * @brief Performs a quiescence search to mitigate the horizon effect.
+ * Only evaluates tactical moves (captures and promotions) to reach a "quiet" state.
+ * @param p The board position.
+ * @param alpha The lower bound for the search window.
+ * @param beta The upper bound for the search window.
+ * @return The static evaluation score after quietness is reached.
+ */
 static int quiescence(const Pos *p, int alpha, int beta) {
     if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
         stop_search = 1;
@@ -367,6 +365,16 @@ static int quiescence(const Pos *p, int alpha, int beta) {
     return alpha;
 }
 
+/**
+ * @brief The core Negamax search algorithm with Alpha-Beta pruning.
+ * Recursively explores the game tree up to the specified depth.
+ * @param p The current board position.
+ * @param depth The remaining search depth.
+ * @param alpha The lower bound for the search window.
+ * @param beta The upper bound for the search window.
+ * @param best_move Pointer to store the best move found at the root.
+ * @return The best score found in centipawns.
+ */
 static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
     if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
         stop_search = 1;
@@ -406,6 +414,12 @@ static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move
     return best_score;
 }
 
+/**
+ * @brief Initiates the engine's time-controlled iterative deepening search.
+ * Handles parsing the UCI 'go' command, managing search time, and outputting the best move.
+ * @param p The starting board position.
+ * @param go_cmd The UCI go command string containing time limits.
+ */
 void search_position(const Pos *p, const char *go_cmd) {
     long long movetime = 1000; 
     const char *ptr = strstr(go_cmd, "movetime");
