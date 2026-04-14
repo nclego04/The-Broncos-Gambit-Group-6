@@ -346,6 +346,9 @@ int main(void) {
     Pos pos;
     pos_start(&pos);
 
+    FILE *f = fopen("tests/search_metrics.txt", "w");
+    if (f) fclose(f);
+    
     char line[8192];
     while (fgets(line, sizeof(line), stdin)) {
         // trim
@@ -363,6 +366,8 @@ int main(void) {
             fflush(stdout);
         } else if (strcmp(line, "ucinewgame") == 0) {
             pos_start(&pos);
+            FILE *f = fopen("tests/search_metrics.txt", "w");
+            if (f) fclose(f);
         } else if (strncmp(line, "position", 8) == 0) {
             parse_position(&pos, line);
         } else if (strncmp(line, "go", 2) == 0) {
