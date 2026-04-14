@@ -15,6 +15,31 @@ static int stop_search = 0;
 static int nodes = 0;
 
 /**
+ * @brief Endgame Piece-Square Tables (PSTs) for evaluating piece positioning in the late game.
+ */
+static const int eg_pawn_pst[64] = {
+     0,  0,  0,  0,  0,  0,  0,  0,
+    80, 80, 80, 80, 80, 80, 80, 80,
+    50, 50, 50, 50, 50, 50, 50, 50,
+    30, 30, 30, 30, 30, 30, 30, 30,
+    20, 20, 20, 20, 20, 20, 20, 20,
+    10, 10, 10, 10, 10, 10, 10, 10,
+     0,  0,  0,  0,  0,  0,  0,  0,
+     0,  0,  0,  0,  0,  0,  0,  0
+};
+
+static const int eg_king_pst[64] = {
+    -50,-40,-30,-20,-20,-30,-40,-50,
+    -30,-20,-10,  0,  0,-10,-20,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 30, 40, 40, 30,-10,-30,
+    -30,-10, 20, 30, 30, 20,-10,-30,
+    -30,-30,  0,  0,  0,  0,-30,-30,
+    -50,-30,-30,-30,-30,-30,-30,-50
+};
+
+/**
  * @brief Gets the current system time in milliseconds.
  * Handles cross-platform differences between Windows and POSIX systems.
  */
