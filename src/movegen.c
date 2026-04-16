@@ -1,8 +1,15 @@
 #include "movegen.h"
+#include "engine.h"
 
 /**
- * Generates all pseudo-legal pawn moves for a given position and square.
+ * @brief Generates all pseudo-legal pawn moves for a given position and square.
+ * 
  * Handles single pushes, double pushes from the start rank, captures, and promotions.
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
     int r = from / 8, f = from % 8;
@@ -12,7 +19,7 @@ void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
 
     int nr = r + dir;
     if (nr >= 0 && nr < 8) {
-        // 1. Move forward 1 square
+        // Forward push
         int to = nr * 8 + f;
         if (p->b[to] == '.') {
             if (nr == prom_r) {
@@ -22,7 +29,7 @@ void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
                 add_move(moves, n, from, to, 'n');
             } else {
                 add_move(moves, n, from, to, 0);
-                // 2. Move forward 2 squares (only if forward 1 is also empty and on start rank)
+                // Double forward push (only if forward 1 is also empty and on start rank)
                 if (r == start_r) {
                     int to2 = (r + 2 * dir) * 8 + f;
                     if (p->b[to2] == '.') {
@@ -32,7 +39,7 @@ void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
             }
         }
         
-        // 3. Diagonal captures
+        // Diagonal captures
         for (int df = -1; df <= 1; df += 2) {
             int nf = f + df;
             if (nf >= 0 && nf < 8) {
@@ -55,7 +62,12 @@ void gen_pawn(const Pos *p, int from, int white, Move *moves, int *n) {
 }
 
 /**
- * Generates all pseudo-legal knight moves.
+ * @brief Generates all pseudo-legal knight moves.
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 void gen_knight(const Pos *p, int from, int white, Move *moves, int *n) {
     int r = from / 8, f = from % 8;
@@ -76,8 +88,16 @@ void gen_knight(const Pos *p, int from, int white, Move *moves, int *n) {
 }
 
 /**
- * Core move generation logic for sliding pieces (Queen, Rook, Bishop).
+ * @brief Core move generation logic for sliding pieces (Queen, Rook, Bishop).
+ * 
  * Follows directional rays until encountering the board edge or another piece.
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param dirs An array of directional offsets (row, col).
+ * @param dcount The number of directions to explore.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 static void gen_slider(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
     int r = from / 8, f = from % 8;
@@ -102,28 +122,54 @@ static void gen_slider(const Pos *p, int from, int white, const int dirs[][2], i
 }
 
 /**
- * Generates all pseudo-legal queen moves (sliding in all 8 directions).
+ * @brief Generates all pseudo-legal queen moves (sliding in all 8 directions).
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param dirs An array of directional offsets (row, col).
+ * @param dcount The number of directions to explore.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 void gen_queen(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
     gen_slider(p, from, white, dirs, dcount, moves, n);
 }
 
 /**
- * Generates all pseudo-legal bishop moves (sliding diagonally).
+ * @brief Generates all pseudo-legal bishop moves (sliding diagonally).
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param dirs An array of directional offsets (row, col).
+ * @param dcount The number of directions to explore.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 void gen_bishop(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
     gen_slider(p, from, white, dirs, dcount, moves, n);
 }
 
 /**
- * Generates all pseudo-legal rook moves (sliding orthogonally).
+ * @brief Generates all pseudo-legal rook moves (sliding orthogonally).
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param dirs An array of directional offsets (row, col).
+ * @param dcount The number of directions to explore.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 void gen_rook(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
     gen_slider(p, from, white, dirs, dcount, moves, n);
 }
 
 /**
- * Generates all pseudo-legal king moves, including castling.
+ * @brief Generates all pseudo-legal king moves, including castling.
+ * @param p The board position state.
+ * @param from The starting square index.
+ * @param white 1 if generating moves for White, 0 for Black.
+ * @param moves The array to populate with generated moves.
+ * @param n Pointer to the number of generated moves (updated in place).
  */
 void gen_king(const Pos *p, int from, int white, Move *moves, int *n) {
     int r = from / 8, f = from % 8;

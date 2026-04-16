@@ -7,7 +7,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #else
-#include <sys/time.h>
+#include <time.h>
 #endif
 
 static long long stop_time = 0;
@@ -22,13 +22,15 @@ static long long get_time_ms(void) {
 #if defined(_WIN32) || defined(_WIN64)
     return GetTickCount64();
 #else
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
 #endif
 }
 
-// Basic Piece-Square Tables (simplified, mapping center control and piece activity)
+/**
+ * @brief Piece-Square Tables (PSTs) for evaluating piece positioning.
+ */
 static const int pawn_pst[64] = {
      0,  0,  0,  0,  0,  0,  0,  0,
     50, 50, 50, 50, 50, 50, 50, 50,
@@ -96,61 +98,8 @@ static const int king_pst[64] = {
 };
 
 /**
- * @brief Returns the base material value of a given piece.
- * @param c The piece character (case-insensitive).
- * @return The evaluation value in centipawns.
+ * @brief Endgame Piece-Square Tables (PSTs) for evaluating piece positioning in the late game.
  */
-static int get_piece_value(char c) {
-    switch (toupper((unsigned char)c)) {
-        case 'P': return 100;
-        case 'N': return 320;
-        case 'B': return 330;
-        case 'R': return 500;
-        case 'Q': return 900;
-        case 'K': return 20000;
-        default: return 0;
-    }
-}
-
-/**
- * @brief Sorts a list of pseudo-legal moves to optimize Alpha-Beta pruning.
- * Applies the MVV-LVA (Most Valuable Victim - Least Valuable Attacker) heuristic.
- * @param p The current board position.
- * @param moves The array of moves to sort.
- * @param num_moves The total number of moves in the array.
- */
-static void sort_moves(const Pos *p, Move *moves, int num_moves) {
-    int scores[256];
-    for (int i = 0; i < num_moves; i++) {
-        int score = 0;
-        char target = p->b[moves[i].to];
-        char piece = p->b[moves[i].from];
-        
-        // MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
-        if (target != '.') {
-            score = 10000 + 10 * get_piece_value(target) - get_piece_value(piece);
-        }
-        
-        if (moves[i].promo) {
-            score += 20000 + get_piece_value(moves[i].promo);
-        }
-        
-        scores[i] = score;
-    }
-    
-    // Insertion sort
-    for (int i = 0; i < num_moves - 1; i++) {
-        int best_idx = i;
-        for (int j = i + 1; j < num_moves; j++) {
-            if (scores[j] > scores[best_idx]) best_idx = j;
-        }
-        if (best_idx != i) {
-            int tmp_score = scores[i]; scores[i] = scores[best_idx]; scores[best_idx] = tmp_score;
-            Move tmp_move = moves[i]; moves[i] = moves[best_idx]; moves[best_idx] = tmp_move;
-        }
-    }
-}
-
 static const int eg_pawn_pst[64] = {
      0,  0,  0,  0,  0,  0,  0,  0,
     80, 80, 80, 80, 80, 80, 80, 80,
@@ -181,7 +130,7 @@ static const int eg_king_pst[64] = {
  * @return The evaluation score in centipawns.
  */
 static int evaluate(const Pos *p) {
-    int mg_score[2] = {0, 0}; // [0] Black, [1] White
+    int mg_score[2] = {0, 0}; // Score arrays: [0] Black, [1] White
     int eg_score[2] = {0, 0};
     int game_phase = 0;
     
@@ -196,7 +145,7 @@ static int evaluate(const Pos *p) {
     }
     int bishops[2] = {0, 0};
 
-    // 1. Gather structural data and calculate game phase
+    // Phase 1: Gather structural data and calculate game phase
     for (int r = 0; r < 8; r++) {
         for (int f = 0; f < 8; f++) {
             char pc = p->b[r * 8 + f];
@@ -223,7 +172,7 @@ static int evaluate(const Pos *p) {
     }
     if (game_phase > 24) game_phase = 24;
 
-    // 2. Evaluate pieces
+    // Phase 2: Evaluate pieces
     for (int r = 0; r < 8; r++) {
         for (int f = 0; f < 8; f++) {
             int sq = r * 8 + f;
@@ -244,16 +193,16 @@ static int evaluate(const Pos *p) {
                     mg += 100 + pawn_pst[pst_sq];
                     eg += 120 + eg_pawn_pst[pst_sq];
                     
-                    // Doubled Pawns
+                    // Evaluate doubled pawns
                     if (pawns[is_w][f] > 1) { mg -= 15; eg -= 20; }
                     
-                    // Isolated Pawns
+                    // Evaluate isolated pawns
                     int isolated = 1;
                     if (f > 0 && pawns[is_w][f - 1] > 0) isolated = 0;
                     if (f < 7 && pawns[is_w][f + 1] > 0) isolated = 0;
                     if (isolated) { mg -= 20; eg -= 20; }
                     
-                    // Passed Pawns
+                    // Evaluate passed pawns
                     int passed = 1;
                     if (is_w) {
                         if (max_pawn_rank[enemy][f] > r) passed = 0;
@@ -282,11 +231,11 @@ static int evaluate(const Pos *p) {
                 case 'R':
                     mg += 500 + rook_pst[pst_sq];
                     eg += 500 + rook_pst[pst_sq];
-                    // Open files
+                    // Evaluate open files
                     if (pawns[0][f] == 0 && pawns[1][f] == 0) {
                         mg += 30; eg += 30;
                     }
-                    // 7th rank
+                    // Evaluate 7th rank positioning
                     if ((is_w && r == 6) || (!is_w && r == 1)) {
                         mg += 30; eg += 30;
                     }
@@ -299,7 +248,7 @@ static int evaluate(const Pos *p) {
                     mg += 20000 + king_pst[pst_sq];
                     eg += 20000 + eg_king_pst[pst_sq];
                     
-                    // King Safety (Pawn Shield & Open Files)
+                    // Evaluate king safety (pawn shields and open files)
                     if (f > 0 && pawns[is_w][f - 1] == 0) mg -= 15;
                     if (pawns[is_w][f] == 0) mg -= 20;
                     if (f < 7 && pawns[is_w][f + 1] == 0) mg -= 15;
@@ -311,7 +260,7 @@ static int evaluate(const Pos *p) {
         }
     }
     
-    // Bishop pair bonus
+    // Apply bishop pair bonus
     if (bishops[1] >= 2) { mg_score[1] += 40; eg_score[1] += 50; }
     if (bishops[0] >= 2) { mg_score[0] += 40; eg_score[0] += 50; }
     
@@ -324,45 +273,6 @@ static int evaluate(const Pos *p) {
     int score = (mg_eval * mg_weight + eg_eval * eg_weight) / 24;
     
     return p->white_to_move ? score : -score;
-}
-
-/**
- * @brief Performs a quiescence search to mitigate the horizon effect.
- * Only evaluates tactical moves (captures and promotions) to reach a "quiet" state.
- * @param p The board position.
- * @param alpha The lower bound for the search window.
- * @param beta The upper bound for the search window.
- * @return The static evaluation score after quietness is reached.
- */
-static int quiescence(const Pos *p, int alpha, int beta) {
-    if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
-        stop_search = 1;
-        return 0;
-    }
-    
-    int stand_pat = evaluate(p);
-    if (stand_pat >= beta) return beta;
-    if (alpha < stand_pat) alpha = stand_pat;
-    
-    Move moves[256];
-    int num_moves = legal_moves(p, moves);
-    
-    sort_moves(p, moves, num_moves);
-    
-    for (int i = 0; i < num_moves; i++) {
-        char target = p->b[moves[i].to];
-        
-        // Only consider captures and promotions in quiescence search
-        if (target == '.' && moves[i].promo == 0) continue;
-        
-        Pos np = make_move(p, moves[i]);
-        int score = -quiescence(&np, -beta, -alpha);
-        if (stop_search) return 0;
-        
-        if (score >= beta) return beta;
-        if (score > alpha) alpha = score;
-    }
-    return alpha;
 }
 
 /**
@@ -381,12 +291,10 @@ static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move
         return 0;
     }
     
-    if (depth == 0) return quiescence(p, alpha, beta);
+    if (depth == 0) return evaluate(p);
     
     Move moves[256];
     int num_moves = legal_moves(p, moves);
-    
-    sort_moves(p, moves, num_moves);
     
     if (num_moves == 0) {
         int ksq = -1;
