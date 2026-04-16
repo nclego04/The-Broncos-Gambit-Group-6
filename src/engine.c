@@ -205,6 +205,15 @@ Pos make_move(const Pos *p, Move m) {
     }
     np.b[m.to] = placed;
 
+    // En-passant capture. This is a pawn moving to the en-passant square.
+    if (p->ep != -1 && m.to == p->ep && (piece == 'P' || piece == 'p')) {
+        if (is_white_piece(piece)) {
+            np.b[m.to - 8] = '.'; // remove the captured black pawn
+        } else {
+            np.b[m.to + 8] = '.'; // remove the captured white pawn
+        }
+    }
+
     // Castling processing
     if ((piece == 'K' || piece == 'k') && abs(m.to - m.from) == 2) {
         if (m.to == 6) { np.b[5] = 'R'; np.b[7] = '.'; }         // White Kingside
@@ -214,6 +223,13 @@ Pos make_move(const Pos *p, Move m) {
     }
 
     np.ep = -1;
+    // Set new en-passant square if a pawn made a two-square advance
+    if (piece == 'P' && m.from / 8 == 1 && m.to / 8 == 3) {
+        np.ep = m.from + 8;
+    } else if (piece == 'p' && m.from / 8 == 6 && m.to / 8 == 4) {
+        np.ep = m.from - 8;
+    }
+
     // Update castling rights
     // Disable rights if a king moves, or if rooks move/are captured
     if (piece == 'K') np.castling &= ~3;   // Both White rights
