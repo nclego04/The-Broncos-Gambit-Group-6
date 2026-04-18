@@ -10,5 +10,6 @@ void gen_queen(const Pos *p, int from, int white, const int dirs[][2], int dcoun
 void gen_bishop(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n);
 void gen_rook(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n);
 void gen_king(const Pos *p, int from, int white, Move *moves, int *n);
+void gen_slider(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n);
 
 #endif // MOVEGEN_H

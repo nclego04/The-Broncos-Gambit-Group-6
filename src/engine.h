@@ -16,6 +16,8 @@ void apply_uci_move(Pos *p, const char *uci);
 void parse_position(Pos *p, const char *line);
 void index_to_sq(int idx, char out[3]);
 void print_bestmove(Move m);
+int in_check(const Pos *p, int white_king);
+int pseudo_legal_moves(const Pos *p, Move *moves);
 
 
 #endif // ENGINE_H

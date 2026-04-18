@@ -7,6 +7,7 @@
 // We need to include the headers for the functions we want to test.
 #include "../src/engine.h"
 #include "../src/algorithm.h"
+#include "../src/types.h"
 
 /*
  * Test Suite setup and teardown functions.
@@ -74,7 +75,7 @@ int main(void) {
 
     // Add the tests to the suite
     if ((NULL == CU_add_test(pSuite, "test_pos_from_fen_startpos", test_pos_from_fen_startpos)) ||
-        (NULL == CU_add_test(pSuite, "test_make_move_isolated", test_make_move)))
+        (NULL == CU_add_test(pSuite, "test_make_move", test_make_move)))
     {
         CU_cleanup_registry();
         return CU_get_error();

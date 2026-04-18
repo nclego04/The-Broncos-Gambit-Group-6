@@ -177,7 +177,7 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
  * @param white_king 1 to check the White king, 0 to check the Black king.
  * @return 1 if the king is currently in check, 0 otherwise.
  */
-static int in_check(const Pos *p, int white_king) {
+int in_check(const Pos *p, int white_king) {
     char k = white_king ? 'K' : 'k';
     int ksq = -1;
     for (int i = 0; i < 64; i++) if (p->b[i] == k) {
@@ -265,7 +265,7 @@ void add_move(Move *moves, int *n, int from, int to, char promo) {
  * @param moves The array to populate.
  * @return The number of pseudo-legal moves generated.
  */
-static int pseudo_legal_moves(const Pos *p, Move *moves) {
+int pseudo_legal_moves(const Pos *p, Move *moves) {
     int n = 0;
     int us_white = p->white_to_move;
     for (int i = 0; i < 64; i++) {
