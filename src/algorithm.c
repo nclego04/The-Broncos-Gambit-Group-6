@@ -1,13 +1,15 @@
 #include "algorithm.h"
+#include "evaluate.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
+#include "engine.h"
+#include "types.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #else
-#include <sys/time.h>
+#include <time.h>
 #endif
 
 static long long stop_time = 0;
@@ -15,264 +17,17 @@ static int stop_search = 0;
 static int nodes = 0;
 
 /**
- * @brief Piece-Square Tables (PSTs) for evaluating piece positioning.
- */
-static const int pawn_pst[64] = {
-     0,  0,  0,  0,  0,  0,  0,  0,
-    50, 50, 50, 50, 50, 50, 50, 50,
-    10, 10, 20, 30, 30, 20, 10, 10,
-     5,  5, 10, 25, 25, 10,  5,  5,
-     0,  0,  0, 20, 20,  0,  0,  0,
-     5, -5,-10,  0,  0,-10, -5,  5,
-     5, 10, 10,-20,-20, 10, 10,  5,
-     0,  0,  0,  0,  0,  0,  0,  0
-};
-
-static const int knight_pst[64] = {
-    -50,-40,-30,-30,-30,-30,-40,-50,
-    -40,-20,  0,  0,  0,  0,-20,-40,
-    -30,  0, 10, 15, 15, 10,  0,-30,
-    -30,  5, 15, 20, 20, 15,  5,-30,
-    -30,  0, 15, 20, 20, 15,  0,-30,
-    -30,  5, 10, 15, 15, 10,  5,-30,
-    -40,-20,  0,  5,  5,  0,-20,-40,
-    -50,-40,-30,-30,-30,-30,-40,-50
-};
-
-static const int bishop_pst[64] = {
-    -20,-10,-10,-10,-10,-10,-10,-20,
-    -10,  0,  0,  0,  0,  0,  0,-10,
-    -10,  0,  5, 10, 10,  5,  0,-10,
-    -10,  5,  5, 10, 10,  5,  5,-10,
-    -10,  0, 10, 10, 10, 10,  0,-10,
-    -10, 10, 10, 10, 10, 10, 10,-10,
-    -10,  5,  0,  0,  0,  0,  5,-10,
-    -20,-10,-10,-10,-10,-10,-10,-20
-};
-
-static const int rook_pst[64] = {
-      0,  0,  0,  0,  0,  0,  0,  0,
-      5, 10, 10, 10, 10, 10, 10,  5,
-     -5,  0,  0,  0,  0,  0,  0, -5,
-     -5,  0,  0,  0,  0,  0,  0, -5,
-     -5,  0,  0,  0,  0,  0,  0, -5,
-     -5,  0,  0,  0,  0,  0,  0, -5,
-     -5,  0,  0,  0,  0,  0,  0, -5,
-      0,  0,  0,  5,  5,  0,  0,  0
-};
-
-static const int queen_pst[64] = {
-    -20,-10,-10, -5, -5,-10,-10,-20,
-    -10,  0,  0,  0,  0,  0,  0,-10,
-    -10,  0,  5,  5,  5,  5,  0,-10,
-     -5,  0,  5,  5,  5,  5,  0, -5,
-      0,  0,  5,  5,  5,  5,  0, -5,
-    -10,  5,  5,  5,  5,  5,  0,-10,
-    -10,  0,  5,  0,  0,  0,  0,-10,
-    -20,-10,-10, -5, -5,-10,-10,-20
-};
-
-static const int king_pst[64] = {
-    -30,-40,-40,-50,-50,-40,-40,-30,
-    -30,-40,-40,-50,-50,-40,-40,-30,
-    -30,-40,-40,-50,-50,-40,-40,-30,
-    -30,-40,-40,-50,-50,-40,-40,-30,
-    -20,-30,-30,-40,-40,-30,-30,-20,
-    -10,-20,-20,-20,-20,-20,-20,-10,
-     20, 20,  0,  0,  0,  0, 20, 20,
-     20, 30, 10,  0,  0, 10, 30, 20
-};
-
-/**
- * @brief Endgame Piece-Square Tables (PSTs) for evaluating piece positioning in the late game.
- */
-static const int eg_pawn_pst[64] = {
-     0,  0,  0,  0,  0,  0,  0,  0,
-    80, 80, 80, 80, 80, 80, 80, 80,
-    50, 50, 50, 50, 50, 50, 50, 50,
-    30, 30, 30, 30, 30, 30, 30, 30,
-    20, 20, 20, 20, 20, 20, 20, 20,
-    10, 10, 10, 10, 10, 10, 10, 10,
-     0,  0,  0,  0,  0,  0,  0,  0,
-     0,  0,  0,  0,  0,  0,  0,  0
-};
-
-static const int eg_king_pst[64] = {
-    -50,-40,-30,-20,-20,-30,-40,-50,
-    -30,-20,-10,  0,  0,-10,-20,-30,
-    -30,-10, 20, 30, 30, 20,-10,-30,
-    -30,-10, 30, 40, 40, 30,-10,-30,
-    -30,-10, 30, 40, 40, 30,-10,-30,
-    -30,-10, 20, 30, 30, 20,-10,-30,
-    -30,-30,  0,  0,  0,  0,-30,-30,
-    -50,-30,-30,-30,-30,-30,-30,-50
-};
-
-/**
  * @brief Gets the current system time in milliseconds.
  * Handles cross-platform differences between Windows and POSIX systems.
  */
-static long long get_time_ms(void) {
+long long get_time_ms(void) {
 #if defined(_WIN32) || defined(_WIN64)
     return GetTickCount64();
 #else
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000LL + ts.tv_nsec / 1000000;
 #endif
-}
-
-/**
- * @brief Statically evaluates the board state from the perspective of the side to move.
- * Factors in material, Piece-Square Tables (PSTs), game phase (tapered evaluation),
- * pawn structures, and king safety.
- * @param p The board position to evaluate.
- * @return The evaluation score in centipawns.
- */
-static int evaluate(const Pos *p) {
-    int mg_score[2] = {0, 0}; // Score arrays: [0] Black, [1] White
-    int eg_score[2] = {0, 0};
-    int game_phase = 0;
-    
-    int pawns[2][8] = {{0}}; 
-    int min_pawn_rank[2][8];
-    int max_pawn_rank[2][8];
-    for (int c = 0; c < 2; c++) {
-        for (int f = 0; f < 8; f++) {
-            min_pawn_rank[c][f] = 8;
-            max_pawn_rank[c][f] = -1;
-        }
-    }
-    int bishops[2] = {0, 0};
-
-    // Phase 1: Gather structural data and calculate game phase
-    for (int r = 0; r < 8; r++) {
-        for (int f = 0; f < 8; f++) {
-            char pc = p->b[r * 8 + f];
-            if (pc == '.') continue;
-            
-            int is_w = is_white_piece(pc);
-            char up = (char)toupper((unsigned char)pc);
-            
-            if (up == 'P') {
-                pawns[is_w][f]++;
-                if (r < min_pawn_rank[is_w][f]) min_pawn_rank[is_w][f] = r;
-                if (r > max_pawn_rank[is_w][f]) max_pawn_rank[is_w][f] = r;
-            } else if (up == 'B') {
-                bishops[is_w]++;
-                game_phase += 1;
-            } else if (up == 'N') {
-                game_phase += 1;
-            } else if (up == 'R') {
-                game_phase += 2;
-            } else if (up == 'Q') {
-                game_phase += 4;
-            }
-        }
-    }
-    if (game_phase > 24) game_phase = 24;
-
-    // Phase 2: Evaluate pieces
-    for (int r = 0; r < 8; r++) {
-        for (int f = 0; f < 8; f++) {
-            int sq = r * 8 + f;
-            char pc = p->b[sq];
-            if (pc == '.') continue;
-            
-            int is_w = is_white_piece(pc);
-            char up = (char)toupper((unsigned char)pc);
-            
-            int pst_r = is_w ? (7 - r) : r;
-            int pst_sq = pst_r * 8 + f;
-            
-            int mg = 0, eg = 0;
-            int enemy = !is_w;
-            
-            switch (up) {
-                case 'P': {
-                    mg += 100 + pawn_pst[pst_sq];
-                    eg += 120 + eg_pawn_pst[pst_sq];
-                    
-                    // Evaluate doubled pawns
-                    if (pawns[is_w][f] > 1) { mg -= 15; eg -= 20; }
-                    
-                    // Evaluate isolated pawns
-                    int isolated = 1;
-                    if (f > 0 && pawns[is_w][f - 1] > 0) isolated = 0;
-                    if (f < 7 && pawns[is_w][f + 1] > 0) isolated = 0;
-                    if (isolated) { mg -= 20; eg -= 20; }
-                    
-                    // Evaluate passed pawns
-                    int passed = 1;
-                    if (is_w) {
-                        if (max_pawn_rank[enemy][f] > r) passed = 0;
-                        if (f > 0 && max_pawn_rank[enemy][f - 1] > r) passed = 0;
-                        if (f < 7 && max_pawn_rank[enemy][f + 1] > r) passed = 0;
-                    } else {
-                        if (min_pawn_rank[enemy][f] != 8 && min_pawn_rank[enemy][f] < r) passed = 0;
-                        if (f > 0 && min_pawn_rank[enemy][f - 1] != 8 && min_pawn_rank[enemy][f - 1] < r) passed = 0;
-                        if (f < 7 && min_pawn_rank[enemy][f + 1] != 8 && min_pawn_rank[enemy][f + 1] < r) passed = 0;
-                    }
-                    if (passed) {
-                        int r_bonus = is_w ? r : (7 - r);
-                        mg += r_bonus * 10;
-                        eg += r_bonus * 20;
-                    }
-                    break;
-                }
-                case 'N':
-                    mg += 320 + knight_pst[pst_sq];
-                    eg += 300 + knight_pst[pst_sq];
-                    break;
-                case 'B':
-                    mg += 330 + bishop_pst[pst_sq];
-                    eg += 330 + bishop_pst[pst_sq];
-                    break;
-                case 'R':
-                    mg += 500 + rook_pst[pst_sq];
-                    eg += 500 + rook_pst[pst_sq];
-                    // Evaluate open files
-                    if (pawns[0][f] == 0 && pawns[1][f] == 0) {
-                        mg += 30; eg += 30;
-                    }
-                    // Evaluate 7th rank positioning
-                    if ((is_w && r == 6) || (!is_w && r == 1)) {
-                        mg += 30; eg += 30;
-                    }
-                    break;
-                case 'Q':
-                    mg += 900 + queen_pst[pst_sq];
-                    eg += 900 + queen_pst[pst_sq];
-                    break;
-                case 'K':
-                    mg += 20000 + king_pst[pst_sq];
-                    eg += 20000 + eg_king_pst[pst_sq];
-                    
-                    // Evaluate king safety (pawn shields and open files)
-                    if (f > 0 && pawns[is_w][f - 1] == 0) mg -= 15;
-                    if (pawns[is_w][f] == 0) mg -= 20;
-                    if (f < 7 && pawns[is_w][f + 1] == 0) mg -= 15;
-                    break;
-            }
-            
-            mg_score[is_w] += mg;
-            eg_score[is_w] += eg;
-        }
-    }
-    
-    // Apply bishop pair bonus
-    if (bishops[1] >= 2) { mg_score[1] += 40; eg_score[1] += 50; }
-    if (bishops[0] >= 2) { mg_score[0] += 40; eg_score[0] += 50; }
-    
-    int mg_eval = mg_score[1] - mg_score[0];
-    int eg_eval = eg_score[1] - eg_score[0];
-    
-    int mg_weight = game_phase;
-    int eg_weight = 24 - game_phase;
-    
-    int score = (mg_eval * mg_weight + eg_eval * eg_weight) / 24;
-    
-    return p->white_to_move ? score : -score;
 }
 
 /**
@@ -285,13 +40,16 @@ static int evaluate(const Pos *p) {
  * @param best_move Pointer to store the best move found at the root.
  * @return The best score found in centipawns.
  */
-static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
+int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
     if ((nodes++ & 2047) == 0 && get_time_ms() >= stop_time) {
         stop_search = 1;
         return 0;
     }
     
-    if (depth == 0) return evaluate(p);
+    if (depth == 0) {
+        // Return the static evaluation. Negamax requires this score to be from the perspective of the side to move.
+        return evaluate(p);
+    }
     
     Move moves[256];
     int num_moves = legal_moves(p, moves);
@@ -322,6 +80,12 @@ static int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move
     return best_score;
 }
 
+/**
+ * @brief Initiates the engine's time-controlled iterative deepening search.
+ * Handles parsing the UCI 'go' command, managing search time, and outputting the best move.
+ * @param p The starting board position.
+ * @param go_cmd The UCI go command string containing time limits.
+ */
 /**
  * @brief Initiates the engine's time-controlled iterative deepening search.
  * Handles parsing the UCI 'go' command, managing search time, and outputting the best move.
@@ -384,6 +148,7 @@ void search_position(const Pos *p, const char *go_cmd) {
         Move ms[256];
         if (legal_moves(p, ms) > 0) best_move = ms[0];
     }
+    
     
     if (best_move.from == 0 && best_move.to == 0) {
         printf("bestmove 0000\n");

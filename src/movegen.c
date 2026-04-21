@@ -1,4 +1,5 @@
 #include "movegen.h"
+#include "engine.h"
 
 /**
  * @brief Generates all pseudo-legal pawn moves for a given position and square.
@@ -98,7 +99,7 @@ void gen_knight(const Pos *p, int from, int white, Move *moves, int *n) {
  * @param moves The array to populate with generated moves.
  * @param n Pointer to the number of generated moves (updated in place).
  */
-static void gen_slider(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
+void gen_slider(const Pos *p, int from, int white, const int dirs[][2], int dcount, Move *moves, int *n) {
     int r = from / 8, f = from % 8;
     for (int i = 0; i < dcount; i++) {
         int nr = r + dirs[i][0], nf = f + dirs[i][1];

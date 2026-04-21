@@ -7,13 +7,14 @@
 #include <string.h>
 #include <ctype.h>
 
+#include "engine.h"
 #include "movegen.h"
 #include "algorithm.h"
 
 /**
  * @brief Converts a standard algebraic notation square (e.g., "e2") to a 0-63 board index.
  */
-static int sq_index(const char *s) {
+int sq_index(const char *s) {
     int file = s[0] - 'a';
     int rank = s[1] - '1';
     return rank * 8 + file;
@@ -57,11 +58,6 @@ void pos_from_fen(Pos *p, const char *fen) {
         if (strchr(castle, 'q')) p->castling |= 8;
     }
 
-    // Parse the En Passant target square
-    char *ep = strtok_r(NULL, " ", &save);
-    if (ep && strcmp(ep, "-") != 0) {
-        p->ep = sq_index(ep);
-    }
 
     int rank = 7, file = 0;
     // Parse piece placement data
@@ -86,10 +82,15 @@ void pos_from_fen(Pos *p, const char *fen) {
  * @brief Initializes a position state to the standard chess starting position.
  * @param p The position pointer to initialize.
  */
-static void pos_start(Pos *p) {
+void pos_start(Pos *p) {
     pos_from_fen(p, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
+/**
+ * @brief Checks if a character represents a White piece.
+ * @param c The character to check.
+ * @return 1 if the piece is White (uppercase), 0 otherwise.
+ */
 /**
  * @brief Checks if a character represents a White piece.
  * @param c The character to check.
@@ -107,6 +108,7 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
     int r = sq / 8, f = sq % 8;
 
     // Check for pawn attackers
+    // Check for pawn attackers
     if (by_white) {
         if (r > 0 && f > 0 && p->b[(r - 1) * 8 + (f - 1)] == 'P') return 1;
         if (r > 0 && f < 7 && p->b[(r - 1) * 8 + (f + 1)] == 'P') return 1;
@@ -115,6 +117,7 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
         if (r < 7 && f < 7 && p->b[(r + 1) * 8 + (f + 1)] == 'p') return 1;
     }
 
+    // Check for knight attackers
     // Check for knight attackers
     static const int nd[8] = {-17, -15, -10, -6, 6, 10, 15, 17};
     for (int i = 0; i < 8; i++) {
@@ -131,6 +134,7 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
         if (!by_white && pc == 'n') return 1;
     }
 
+    // Check for sliding piece attackers (bishops, rooks, queens)
     // Check for sliding piece attackers (bishops, rooks, queens)
     static const int dirs[8][2] = {
         {1, 0}, {-1, 0}, {0, 1}, {0, -1},
@@ -162,6 +166,7 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
     }
 
     // Check for adjacent king attackers
+    // Check for adjacent king attackers
     for (int rr = r - 1; rr <= r + 1; rr++) {
         for (int ff = f - 1; ff <= f + 1; ff++) {
             if (rr < 0 || rr >= 8 || ff < 0 || ff >= 8) continue;
@@ -180,8 +185,11 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
  * @param p The board position state.
  * @param white_king 1 to check the White king, 0 to check the Black king.
  * @return 1 if the king is currently in check, 0 otherwise.
+ * @param p The board position state.
+ * @param white_king 1 to check the White king, 0 to check the Black king.
+ * @return 1 if the king is currently in check, 0 otherwise.
  */
-static int in_check(const Pos *p, int white_king) {
+int in_check(const Pos *p, int white_king) {
     char k = white_king ? 'K' : 'k';
     int ksq = -1;
     for (int i = 0; i < 64; i++) if (p->b[i] == k) {
@@ -209,6 +217,15 @@ Pos make_move(const Pos *p, Move m) {
     }
     np.b[m.to] = placed;
 
+    // En-passant capture. This is a pawn moving to the en-passant square.
+    if (p->ep != -1 && m.to == p->ep && (piece == 'P' || piece == 'p')) {
+        if (is_white_piece(piece)) {
+            np.b[m.to - 8] = '.'; // remove the captured black pawn
+        } else {
+            np.b[m.to + 8] = '.'; // remove the captured white pawn
+        }
+    }
+
     // Castling processing
     if ((piece == 'K' || piece == 'k') && abs(m.to - m.from) == 2) {
         if (m.to == 6) { np.b[5] = 'R'; np.b[7] = '.'; }         // White Kingside
@@ -218,6 +235,13 @@ Pos make_move(const Pos *p, Move m) {
     }
 
     np.ep = -1;
+    // Set new en-passant square if a pawn made a two-square advance
+    if (piece == 'P' && m.from / 8 == 1 && m.to / 8 == 3) {
+        np.ep = m.from + 8;
+    } else if (piece == 'p' && m.from / 8 == 6 && m.to / 8 == 4) {
+        np.ep = m.from - 8;
+    }
+
     // Update castling rights
     // Disable rights if a king moves, or if rooks move/are captured
     if (piece == 'K') np.castling &= ~3;   // Both White rights
@@ -238,6 +262,11 @@ Pos make_move(const Pos *p, Move m) {
  * @param from The source square index.
  * @param to The destination square index.
  * @param promo The promotion piece character, or 0.
+ * @param moves The array of generated moves.
+ * @param n Pointer to the current move count.
+ * @param from The source square index.
+ * @param to The destination square index.
+ * @param promo The promotion piece character, or 0.
  */
 void add_move(Move *moves, int *n, int from, int to, char promo) {
     moves[*n].from = from;
@@ -251,9 +280,11 @@ void add_move(Move *moves, int *n, int from, int to, char promo) {
  * Pseudo-legal moves adhere to piece movement geometry but don't consider if the king is left in check.
  * @param p The board position state.
  * @param moves The array to populate.
+ * @param p The board position state.
+ * @param moves The array to populate.
  * @return The number of pseudo-legal moves generated.
  */
-static int pseudo_legal_moves(const Pos *p, Move *moves) {
+int pseudo_legal_moves(const Pos *p, Move *moves) {
     int n = 0;
     int us_white = p->white_to_move;
     for (int i = 0; i < 64; i++) {
@@ -299,11 +330,25 @@ int legal_moves(const Pos *p, Move *out) {
 }
 
 /**
+ * @brief Prints the best move found to standard output in UCI format.
+ * @param m The move to print.
+ */
+void print_bestmove(Move m) {
+    char a[3], b[3];
+    index_to_sq(m.from, a);
+    index_to_sq(m.to, b);
+    if (m.promo) printf("bestmove %s%s%c\n", a, b, m.promo);
+    else printf("bestmove %s%s\n", a, b);
+    fflush(stdout);
+}
+
+/**
  * @brief Parses a UCI move string (e.g., "e2e4" or "e7e8q") and applies it to the position.
+ * @param p The board position state to update.
  * @param p The board position state to update.
  * @param uci The standard coordinate notation string.
  */
-static void apply_uci_move(Pos *p, const char *uci) {
+void apply_uci_move(Pos *p, const char *uci) {
     if (!uci || strlen(uci) < 4) return;
     Move m;
     m.from = sq_index(uci);
@@ -317,9 +362,10 @@ static void apply_uci_move(Pos *p, const char *uci) {
  * @brief Parses the UCI "position" command string, updating the engine's internal board state.
  * Handles both "startpos" initialization and raw FEN string setups, followed by a move list.
  * @param p The board position state to update.
+ * @param p The board position state to update.
  * @param line The full command string from standard input.
  */
-static void parse_position(Pos *p, const char *line) {
+void parse_position(Pos *p, const char *line) {
     char buf[8192];
     strncpy(buf, line, sizeof(buf)-1);
     buf[sizeof(buf) - 1] = 0;
@@ -350,54 +396,4 @@ static void parse_position(Pos *p, const char *line) {
         i++;
         for (; i < nt; i++) apply_uci_move(p, toks[i]);
     }
-}
-
-/**
- * @brief Prints the best move found to standard output in UCI format.
- * @param m The move to print.
- */
-void print_bestmove(Move m) {
-    char a[3], b[3];
-    index_to_sq(m.from, a);
-    index_to_sq(m.to, b);
-    if (m.promo) printf("bestmove %s%s%c\n", a, b, m.promo);
-    else printf("bestmove %s%s\n", a, b);
-    fflush(stdout);
-}
-
-int main(void) {
-    Pos pos;
-    pos_start(&pos);
-    
-    FILE *f = fopen("tests/search_metrics.txt", "w");
-    if (f) fclose(f);
-
-    char line[8192];
-    while (fgets(line, sizeof(line), stdin)) {
-        // Trim trailing newlines
-        size_t len = strlen(line);
-        while (len && (line[len - 1] == '\n' || line[len - 1] == '\r')) line[--len] = 0;
-        if (!len) continue;
-
-        if (strcmp(line, "uci") == 0) {
-            printf("id name team6\n");
-            printf("id author group6\n");
-            printf("uciok\n");
-            fflush(stdout);
-        } else if (strcmp(line, "isready") == 0) {
-            printf("readyok\n");
-            fflush(stdout);
-        } else if (strcmp(line, "ucinewgame") == 0) {
-            pos_start(&pos);
-            FILE *f = fopen("tests/search_metrics.txt", "w");
-            if (f) fclose(f);
-        } else if (strncmp(line, "position", 8) == 0) {
-            parse_position(&pos, line);
-        } else if (strncmp(line, "go", 2) == 0) {
-            search_position(&pos, line);
-        } else if (strcmp(line, "quit") == 0) {
-            break;
-        }
-    }
-    return 0;
 }

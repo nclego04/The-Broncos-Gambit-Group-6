@@ -2,4 +2,5 @@
 set -e
 
 DIR="$(cd "$( dirname "$0" )" && pwd )"
-exec "$DIR/engine"
+"$DIR/tests/engine_test"
+"$DIR/tests/evaluate_test"
