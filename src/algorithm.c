@@ -86,6 +86,12 @@ int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
  * @param p The starting board position.
  * @param go_cmd The UCI go command string containing time limits.
  */
+/**
+ * @brief Initiates the engine's time-controlled iterative deepening search.
+ * Handles parsing the UCI 'go' command, managing search time, and outputting the best move.
+ * @param p The starting board position.
+ * @param go_cmd The UCI go command string containing time limits.
+ */
 void search_position(const Pos *p, const char *go_cmd) {
     long long movetime = 1000; 
     const char *ptr = strstr(go_cmd, "movetime");
@@ -114,6 +120,13 @@ void search_position(const Pos *p, const char *go_cmd) {
         fclose(metrics_file);
     }
 
+    
+    FILE *metrics_file = fopen("tests/search_metrics.txt", "a");
+    if (metrics_file) {
+        fprintf(metrics_file, "--- Searching Move ---\n");
+        fclose(metrics_file);
+    }
+
     Move best_move = {0, 0, 0};
     Move current_best = {0, 0, 0};
     
@@ -122,6 +135,17 @@ void search_position(const Pos *p, const char *go_cmd) {
         int score = negamax(p, depth, -30000, 30000, &current_best);
         if (stop_search) break;
         best_move = current_best;
+        
+        long long current_elapsed = get_time_ms() - start_time;
+        long long calc_elapsed = current_elapsed == 0 ? 1 : current_elapsed;
+        long long current_nps = (long long)nodes * 1000 / calc_elapsed;
+        
+        metrics_file = fopen("tests/search_metrics.txt", "a");
+        if (metrics_file) {
+            fprintf(metrics_file, "Depth %2d | Nodes: %8d | Time: %5lld ms | NPS: %8lld\n", depth, nodes, current_elapsed, current_nps);
+            fclose(metrics_file);
+        }
+
         
         long long current_elapsed = get_time_ms() - start_time;
         long long calc_elapsed = current_elapsed == 0 ? 1 : current_elapsed;
@@ -142,6 +166,7 @@ void search_position(const Pos *p, const char *go_cmd) {
         Move ms[256];
         if (legal_moves(p, ms) > 0) best_move = ms[0];
     }
+    
     
     if (best_move.from == 0 && best_move.to == 0) {
         printf("bestmove 0000\n");
