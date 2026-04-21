@@ -46,7 +46,10 @@ int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
         return 0;
     }
     
-    if (depth == 0) return evaluate(p);
+    if (depth == 0) {
+        // Return the static evaluation. Negamax requires this score to be from the perspective of the side to move.
+        return evaluate(p);
+    }
     
     Move moves[256];
     int num_moves = legal_moves(p, moves);
