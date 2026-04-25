@@ -209,7 +209,7 @@ static int get_pst_sq(int sq, int is_w) {
  * @param mg Pointer to the middlegame score to update.
  * @param eg Pointer to the endgame score to update.
  */
-static void evaluate_pawn_structure(int sq, int is_w, const int pawns[2][8], const int min_pawn_rank[2][8], const int max_pawn_rank[2][8], int *mg, int *eg) {
+void evaluate_pawn_structure(int sq, int is_w, const int pawns[2][8], const int min_pawn_rank[2][8], const int max_pawn_rank[2][8], int *mg, int *eg) {
     int r = sq / 8;
     int f = sq % 8;
     int enemy = !is_w;
@@ -255,7 +255,7 @@ static void evaluate_pawn_structure(int sq, int is_w, const int pawns[2][8], con
  * @param mg Pointer to the middlegame score to update.
  * @param eg Pointer to the endgame score to update.
  */
-static void evaluate_rook_placement(int sq, int is_w, const int pawns[2][8], int *mg, int *eg) {
+void evaluate_rook_placement(int sq, int is_w, const int pawns[2][8], int *mg, int *eg) {
     int r = sq / 8;
     int f = sq % 8;
     int enemy = !is_w;
@@ -284,7 +284,7 @@ static void evaluate_rook_placement(int sq, int is_w, const int pawns[2][8], int
  * @param is_w The king's color.
  * @param mg Pointer to the middlegame score to update (safety is mostly a middlegame factor).
  */
-static void evaluate_king_safety(const Pos *p, int sq, int is_w, int *mg) {
+void evaluate_king_safety(const Pos *p, int sq, int is_w, int *mg) {
     int r = sq / 8;
     int f = sq % 8;
     
