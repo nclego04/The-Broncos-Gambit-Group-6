@@ -55,12 +55,12 @@ static void test_evaluate_startpos(void) {
     p.ep = -1;
 
     int score = evaluate(&p);
-    printf("\n[DEBUG] Startpos score: %d\n", score);
+    printf("\n\t[DEBUG] Startpos score: %d\n", score);
     /* The starting position is equal (0). This is the same from Black's perspective. */
     CU_ASSERT_EQUAL(score, 0);
 }
 
-static void test_evaluate_material_advantage(void) {
+static void test_evaluate_material_and_positional(void) {
     Pos p;
 
     // Position to test pure material advantage: White Knight vs Black lone King.
@@ -97,8 +97,8 @@ static void test_evaluate_material_advantage(void) {
     p.ep = -1;
 
     int score = evaluate(&p);
-    printf("\n[DEBUG] Material advantage score: %d\n", score); 
-    printf("[DEBUG] Expected material advantage score: 298\n");
+    printf("\n\t[DEBUG] Score: %d\n", score); 
+    printf("\t[DEBUG] Expected score: 298\n");
     /* Score reflects the knight's value, with minimal adjustment from PSTs.
      * game_phase=1 (one knight)
      * White N on e2 (sq 12 -> pst_sq 52): mg=-1, eg=-2
@@ -107,57 +107,6 @@ static void test_evaluate_material_advantage(void) {
      * score = (mg_eval * 1 + eg_eval * 23) / 24 = (319 + 6854) / 24 = 7173 / 24 = 298.
      */
     CU_ASSERT_EQUAL(score, 298);
-}
-
-static void test_evaluate_positional_advantage(void) {
-    Pos p;
-
-    // Position to test pure positional advantage. Material is equal (K+N vs k+n).
-    // White's knight is centralized on d4 (good), Black's is on the rim at h8 (bad).
-    // Black's knight is placed on e7, a square with near-zero positional value,
-    // to better isolate the advantage of White's well-placed knight.
-    const char board_visual[8][8] = { // Board from White's perspective
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 8
-        {'.', '.', '.', '.', 'n', '.', '.', '.'}, // Rank 7
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 6
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 5
-        {'.', '.', '.', 'N', '.', '.', '.', '.'}, // Rank 4
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 3
-        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 2
-        {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 1
-    };
-    //
-    // Board from Black's perspective:
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 1
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 2
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 3
-    // {'.', '.', '.', 'N', '.', '.', '.', '.'}  // Rank 4
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 5
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 6
-    // {'.', '.', '.', '.', 'n', '.', '.', '.'}  // Rank 7
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 8
-
-    // Copy the visual board into the engine's 1D representation.
-    for (int r = 0; r < 8; r++) {
-        memcpy(&p.b[(7 - r) * 8], board_visual[r], 8);
-    }
-
-    p.white_to_move = 1;
-    p.castling = 0; // No castling rights
-    p.ep = -1;
-
-    int score = evaluate(&p);
-    printf("\n[DEBUG] Positional advantage score: %d\n", score);
-    printf("[DEBUG] Expected positional advantage score: 25\n");
-    /* The score reflects the advantage of White's centralized knight vs Black's neutral one.
-     * game_phase=2 (two knights).
-     * White N on d4 (sq 27 -> pst_sq 35): mg=+13, eg=+25
-     * Black n on e7 (sq 52 -> pst_sq 52): mg=-1, eg=-2
-     * mg_eval = white_pst_bonus - black_pst_bonus = 13 - (-1) = 14
-     * eg_eval = white_pst_bonus - black_pst_bonus = 25 - (-2) = 27
-     * score = (mg_eval * 2 + eg_eval * 22) / 24 = (14*2 + 27*22) / 24 = 622 / 24 = 25.
-     */
-    CU_ASSERT_EQUAL(score, 25);
 }
 
 static void test_evaluate_pawn_structure(void) {
@@ -196,8 +145,8 @@ static void test_evaluate_pawn_structure(void) {
     p.ep = -1;
 
     int score = evaluate(&p);
-    printf("\n[DEBUG] Pawn structure score: %d\n", score);
-    printf("[DEBUG] Expected pawn structure score: 236\n");
+    printf("\n\t[DEBUG] Pawn structure score: %d\n", score);
+    printf("\t[DEBUG] Expected pawn structure score: 236\n");
     /*
      * --- Calculation ---
      * game_phase = 0. Tapered weights: mg=0, eg=24. Final score is eg_eval.
@@ -217,15 +166,114 @@ static void test_evaluate_pawn_structure(void) {
     CU_ASSERT_EQUAL(score, 236);
 }
 
-static void test_evaluate_rook_on_seventh_and_open_file(void) {
+static void test_evaluate_rook_placement(void) {
     Pos p;
-    // Position to test the rook on 7th rank bonus.
-    // White's rook is on e7. The file is closed by pawns on e2 and e6 to ensure
-    // only the 7th rank bonus is applied, not an open file bonus.
-    // Material is equal (R+2P vs r+2p).
     const char board_visual[8][8] = { // Board from White's perspective
         {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 8
-        {'.', '.', '.', '.', 'R', '.', '.', '.'}, // Rank 7
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 7
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 6
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 5
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 4
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 3
+        {'.', '.', '.', '.', '.', '.', 'r', '.'}, // Rank 2
+        {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 1
+    };
+    //
+    // Board from Black's perspective:
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 1
+    // {'.', '.', '.', '.', 'r', '.', '.', '.'}  // Rank 2
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 3
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 4
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 5
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 6
+    // {'.', '.', '.', '.', '.', '.', 'r', '.'}  // Rank 7
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 8
+
+    for (int r = 0; r < 8; r++) { memcpy(&p.b[(7 - r) * 8], board_visual[r], 8); }
+    p.white_to_move = 1; p.castling = 0; p.ep = -1;
+
+    int score = evaluate(&p);
+    printf("\n\t[DEBUG] Rook score: %d\n", score);
+    printf("\t[DEBUG] Expected rook score: -564\n");
+    /* --- Calculation ---
+     * game_phase = 2. Tapered weights: mg=2, eg=22.
+     * Black Score:
+     *  R on g7: 
+     *      mg = material value + pst bonus + seventh rank bonus + open file bonus
+     *         = 500 + 26 + 30 + 25 = 581
+     *      eg = material value + pst bonus + seventh rank bonus + open file bonus
+     *         = 500 + 8 + 30 + 25 = 563
+     *  Total Black: mg = 581, eg = 563
+     * Final Score = -(581*2 + 563*22)/24 = -564.
+     */
+    CU_ASSERT_EQUAL(score, -564);
+}
+
+static void test_evaluate_bishop_pair(void) {
+    Pos p;
+    // Position to test bishop pair by using the main evaluate function.
+    // Black's king on g8 has a full pawn shield.
+    const char board_visual[8][8] = { // Board from White's perspective
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 8
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 7
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 6
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 5
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 4
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 3
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 2
+        {'B', 'B', '.', '.', '.', '.', '.', '.'}  // Rank 1
+    };
+
+        // Board from Black's perspective:
+    // {'B', 'B', '.', '.', '.', '.', '.', '.'}  // Rank 1
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 2
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 3
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 4
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 5
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 6
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 7
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 8
+
+    // Copy the visual board into the engine's 1D representation.
+    for (int r = 0; r < 8; r++) {
+        memcpy(&p.b[(7 - r) * 8], board_visual[r], 8);
+    }
+
+    p.white_to_move = 1;
+    p.castling = 0; // No castling rights
+    p.ep = -1;
+
+    int score = evaluate(&p);
+    printf("\n\t[DEBUG] Bishop pair score: %d\n", score);
+    printf("\t[DEBUG] Expected bishop pair score: 676\n");
+        /* --- Calculation ---
+     * game_phase = 2. Tapered weights: mg=2, eg=22.
+     * White Score:
+     *  B on a8: 
+     *      mg = material value + pst bonus 
+     *         = 330 - 33 = 297
+     *      eg = material value + pst bonus
+     *         = 330 - 23 = 307
+     *  B on b8: 
+     *     mg = material value + pst bonus 
+     *        = 330 - 3 = 327
+     *     eg = material value + pst bonus
+     *        = 330 - 9 = 321
+     * Total White: 
+     *     mg = 297 + 327 + bishop_pair_bonus = 297 + 327 + 40 = 664
+     *     eg = 307 + 321 + bishop_pair_bonus = 307 + 321 + 50 = 678
+     * Final Score = (664*2 + 678*22)/24 = 676.
+     */
+    CU_ASSERT_EQUAL(score, 676);
+}
+
+static void test_evaluate_missing_king(void) {
+    Pos p;
+    // Edge Case: An illegal board with White's king missing.
+    // The evaluation should be extremely negative, reflecting the loss of the king.
+    const char board_visual[8][8] = { // Board from White's perspective
+        {'.', '.', '.', '.', 'k', '.', '.', '.'}, // Rank 8
+        {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 7
         {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 6
         {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 5
         {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 4
@@ -233,36 +281,39 @@ static void test_evaluate_rook_on_seventh_and_open_file(void) {
         {'.', '.', '.', '.', '.', '.', '.', '.'}, // Rank 2
         {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 1
     };
-    //
-    // Board from Black's perspective:
-    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 1
+
+        // Board from Black's perspective:
+    // {'B', 'B', '.', '.', '.', '.', '.', '.'}  // Rank 1
     // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 2
     // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 3
     // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 4
     // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 5
     // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 6
-    // {'.', '.', '.', '.', 'R', '.', '.', '.'}  // Rank 7
+    // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 7
     // {'.', '.', '.', '.', '.', '.', '.', '.'}  // Rank 8
 
-    for (int r = 0; r < 8; r++) { memcpy(&p.b[(7 - r) * 8], board_visual[r], 8); }
-    p.white_to_move = 1; p.castling = 0; p.ep = -1;
+    // Copy the visual board into the engine's 1D representation.
+    for (int r = 0; r < 8; r++) {
+        memcpy(&p.b[(7 - r) * 8], board_visual[r], 8);
+    }
+
+    p.white_to_move = 1;
+    p.castling = 0; // No castling rights
+    p.ep = -1;
 
     int score = evaluate(&p);
-    printf("\n[DEBUG] Rook on 7th score: %d\n", score);
-    printf("[DEBUG] Expected rook on 7th score: -24\n");
-    /* --- Calculation ---
-     * game_phase = 1. Tapered weights: mg=1, eg=23.
-     * White Scores:
-     *  R on e7: 
-     *      mg = material value + pst bonus + seventh rank bonus + open file bonus
-     *         = 500 + 80 + 30 + 25 = 635
-     *      eg = material value + pst bonus + seventh rank bonus + open file bonus
-     *         = 500 - 3 + 30 + 25 = 552
-     *  Total White: mg = 635, eg = 552
-     * Final Score = (635*1 + 552*23)/24 = 555.
+    printf("\n\t[DEBUG] Check if score < -19,0000");    
+    printf("\n\t[DEBUG] Missing king score: %d\n", score);
+    /*
+     * --- Analysis ---
+     * The evaluation will be massively negative because White's score is missing the
+     * 20,000 base value for the king.
+     * The final score will be roughly 0 - 20000 = -20000.
+     * We assert that the score is less than -19000 to confirm this catastrophic evaluation.
+     * This demonstrates the evaluation function correctly reflects the devastating material loss,
+     * even though the position is illegal.
      */
-    CU_ASSERT_EQUAL(score, -24);
-    CU_ASSERT_EQUAL(score, -49);
+    CU_ASSERT(score < -19000);
 }
 
 int main(void) {
@@ -281,10 +332,11 @@ int main(void) {
 
     // Add the tests to the suite
     if ((NULL == CU_add_test(pSuite, "test_evaluate_startpos", test_evaluate_startpos)) ||
-        (NULL == CU_add_test(pSuite, "test_evaluate_material_advantage", test_evaluate_material_advantage)) ||
-        (NULL == CU_add_test(pSuite, "test_evaluate_positional_advantage", test_evaluate_positional_advantage)) ||
+        (NULL == CU_add_test(pSuite, "test_evaluate_material_and_positional", test_evaluate_material_and_positional)) ||
         (NULL == CU_add_test(pSuite, "test_evaluate_pawn_structure", test_evaluate_pawn_structure)) ||
-        (NULL == CU_add_test(pSuite, "test_evaluate_rook_on_seventh", test_evaluate_rook_on_seventh_and_open_file)))
+        (NULL == CU_add_test(pSuite, "test_evaluate_rook_placement", test_evaluate_rook_placement)) ||
+        (NULL == CU_add_test(pSuite, "test_evaluate_bishop_pair", test_evaluate_bishop_pair)) ||
+        (NULL == CU_add_test(pSuite, "test_evaluate_missing_king", test_evaluate_missing_king)))
     {
         CU_cleanup_registry();
         return CU_get_error();

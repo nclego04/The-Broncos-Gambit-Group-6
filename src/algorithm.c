@@ -12,9 +12,9 @@
 #include <time.h>
 #endif
 
-static long long stop_time = 0;
-static int stop_search = 0;
-static int nodes = 0;
+long long stop_time = 0;
+int stop_search = 0;
+int nodes = 0;
 
 /**
  * @brief Gets the current system time in milliseconds.
@@ -46,7 +46,7 @@ int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
         return 0;
     }
     
-    if (depth == 0) {
+    if (depth <= 0) {
         // Return the static evaluation. Negamax requires this score to be from the perspective of the side to move.
         return evaluate(p);
     }
@@ -80,12 +80,6 @@ int negamax(const Pos *p, int depth, int alpha, int beta, Move *best_move) {
     return best_score;
 }
 
-/**
- * @brief Initiates the engine's time-controlled iterative deepening search.
- * Handles parsing the UCI 'go' command, managing search time, and outputting the best move.
- * @param p The starting board position.
- * @param go_cmd The UCI go command string containing time limits.
- */
 /**
  * @brief Initiates the engine's time-controlled iterative deepening search.
  * Handles parsing the UCI 'go' command, managing search time, and outputting the best move.

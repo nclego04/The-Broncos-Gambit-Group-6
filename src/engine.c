@@ -15,6 +15,7 @@
  * @brief Converts a standard algebraic notation square (e.g., "e2") to a 0-63 board index.
  */
 int sq_index(const char *s) {
+    if (!s || s[0] < 'a' || s[0] > 'h' || s[1] < '1' || s[1] > '8') return -1;
     int file = s[0] - 'a';
     int rank = s[1] - '1';
     return rank * 8 + file;
@@ -185,16 +186,14 @@ int is_square_attacked(const Pos *p, int sq, int by_white) {
  * @param p The board position state.
  * @param white_king 1 to check the White king, 0 to check the Black king.
  * @return 1 if the king is currently in check, 0 otherwise.
- * @param p The board position state.
- * @param white_king 1 to check the White king, 0 to check the Black king.
- * @return 1 if the king is currently in check, 0 otherwise.
  */
 int in_check(const Pos *p, int white_king) {
     char k = white_king ? 'K' : 'k';
     int ksq = -1;
-    for (int i = 0; i < 64; i++) if (p->b[i] == k) {
-        ksq = i;
-        break;
+    for (int i = 0; i < 64; i++) 
+        if (p->b[i] == k) {
+            ksq = i;
+            break;
     }
     if (ksq < 0) return 1;
     return is_square_attacked(p, ksq, !white_king);
@@ -349,13 +348,14 @@ void print_bestmove(Move m) {
  * @param uci The standard coordinate notation string.
  */
 void apply_uci_move(Pos *p, const char *uci) {
-    if (!uci || strlen(uci) < 4) return;
     Move m;
     m.from = sq_index(uci);
     m.to = sq_index(uci + 2);
+    // Gracefully ignore invalid move strings.
+    if (m.from == -1 || m.to == -1) return;
+
     m.promo = (strlen(uci) >= 5) ? uci[4] : 0;
-    Pos np = make_move(p, m);
-    *p = np;
+    *p = make_move(p, m);
 }
 
 /**
@@ -377,22 +377,30 @@ void parse_position(Pos *p, const char *line) {
         toks[nt++] = tok;
     }
 
+    int pos_is_set = 0; // Flag to ensure 'moves' follows 'startpos' or 'fen'.
     int i = 1;
     if (i < nt && strcmp(toks[i], "startpos") == 0) {
         pos_start(p);
         i++;
+        pos_is_set = 1;
     } else if (i < nt && strcmp(toks[i], "fen") == 0) {
         i++;
         char fen[512] = {0};
-        for (int k = 0; k < 6 && i < nt; k++, i++) {
-            if (k)
-                strcat(fen, " ");
+        int fen_tok_count = 0;
+        // Collect FEN string parts until 'moves' or end of tokens.
+        // This is more robust than assuming 6 tokens.
+        while (i < nt && strcmp(toks[i], "moves") != 0) {
+            if (fen_tok_count > 0) strcat(fen, " ");
             strcat(fen, toks[i]);
+            fen_tok_count++;
+            i++;
         }
         pos_from_fen(p, fen);
+        pos_is_set = 1;
     }
 
-    if (i < nt && strcmp(toks[i], "moves") == 0) {
+    // Only process moves if a position was set in this command.
+    if (pos_is_set && i < nt && strcmp(toks[i], "moves") == 0) {
         i++;
         for (; i < nt; i++) apply_uci_move(p, toks[i]);
     }
